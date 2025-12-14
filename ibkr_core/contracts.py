@@ -262,23 +262,39 @@ def resolve_contract(
     logger.debug(f"Resolving contract: {spec.symbol} ({spec.securityType})")
 
     try:
-        # Qualify with IBKR - this fills in conId and other fields
-        qualified_contracts = client.ib.qualifyContracts(contract)
-
-        if not qualified_contracts:
-            raise ContractNotFoundError(
-                f"No contract found for {spec.symbol} ({spec.securityType}) "
-                f"on {spec.exchange or 'any exchange'}"
-            )
-
-        qualified = qualified_contracts[0]
-
-        # For futures without explicit expiry, we got the front month
+        # For futures without expiry, we need to get contract details first
+        # to find the front month
         if spec.securityType == "FUT" and not spec.expiry:
+            # Get all available contracts for this future
+            details = client.ib.reqContractDetails(contract)
+            if not details:
+                raise ContractNotFoundError(
+                    f"No contract found for {spec.symbol} ({spec.securityType}) "
+                    f"on {spec.exchange or 'any exchange'}"
+                )
+
+            # Sort by expiry and pick the front month (earliest expiry)
+            sorted_details = sorted(
+                details,
+                key=lambda d: d.contract.lastTradeDateOrContractMonth
+            )
+            qualified = sorted_details[0].contract
+
             logger.info(
                 f"Resolved {spec.symbol} to front month: "
                 f"{qualified.lastTradeDateOrContractMonth}"
             )
+        else:
+            # Qualify with IBKR - this fills in conId and other fields
+            qualified_contracts = client.ib.qualifyContracts(contract)
+
+            if not qualified_contracts:
+                raise ContractNotFoundError(
+                    f"No contract found for {spec.symbol} ({spec.securityType}) "
+                    f"on {spec.exchange or 'any exchange'}"
+                )
+
+            qualified = qualified_contracts[0]
 
         logger.debug(
             f"Resolved {spec.symbol}: conId={qualified.conId}, "
