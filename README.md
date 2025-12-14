@@ -1,4 +1,4 @@
-# IBKR Integration + MCP Tool Server
+# IBKR Integration + MCP Tool Server (Work in Progress)
 
 A complete, modular integration of Interactive Brokers (IBKR) with a natural-language interface via an MCP tool server.
 
@@ -155,13 +155,3 @@ All requirements implemented and tested:
 | `API_PORT` | `8000` | FastAPI server port |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
-## Documentation
-
-- **Phase Plan**: [`.context/PHASE_PLAN.md`](.context/PHASE_PLAN.md)
-- **Data Schemas**: [`.context/SCHEMAS.md`](.context/SCHEMAS.md)
-- **Architecture**: [`.context/ARCH_NOTES.md`](.context/ARCH_NOTES.md)
-- **TODOs**: [`.context/TODO_BACKLOG.md`](.context/TODO_BACKLOG.md)
-
-## License
-
-(Add your license here)
