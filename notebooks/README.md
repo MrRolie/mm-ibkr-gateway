@@ -31,6 +31,19 @@ Demonstrates:
 - Data visualization (optional, requires matplotlib)
 - Error handling
 
+### [03_account_status.ipynb](03_account_status.ipynb)
+
+**Phase 3: Account Status**
+
+Demonstrates:
+- Account summary (NLV, cash, buying power, margin)
+- Portfolio positions with market values and P&L
+- Account-level and per-symbol P&L breakdown
+- Multi-account support
+- Combined status retrieval
+- Practical portfolio dashboard example
+- Error handling
+
 ## Running the Notebooks
 
 1. Start IBKR Gateway/TWS in paper trading mode
