@@ -12,8 +12,8 @@ services:
     environment:
       # IBKR Connection (host.docker.internal for connecting to host machine)
       - IBKR_GATEWAY_HOST=host.docker.internal
-      - IBKR_GATEWAY_PORT=4002
-      - CLIENT_ID=1
+      - PAPER_GATEWAY_PORT=4002
+      - PAPER_CLIENT_ID=1
       
       # Trading Mode
       - TRADING_MODE=paper
@@ -45,8 +45,8 @@ services:
     container_name: ibkr-gateway-healthcheck
     environment:
       - IBKR_GATEWAY_HOST=host.docker.internal
-      - IBKR_GATEWAY_PORT=4002
-      - CLIENT_ID=2
+      - PAPER_GATEWAY_PORT=4002
+      - PAPER_CLIENT_ID=2
       - TRADING_MODE=paper
       - ORDERS_ENABLED=false
     volumes:

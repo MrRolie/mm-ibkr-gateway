@@ -36,7 +36,10 @@ cp .env.example .env
 
 ```
 IBKR_GATEWAY_HOST=127.0.0.1
-IBKR_GATEWAY_PORT=4001
+PAPER_GATEWAY_PORT=4002
+PAPER_CLIENT_ID=1
+LIVE_GATEWAY_PORT=4001
+LIVE_CLIENT_ID=777
 TRADING_MODE=paper
 ORDERS_ENABLED=false
 ```
@@ -149,7 +152,10 @@ All requirements implemented and tested:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `IBKR_GATEWAY_HOST` | `127.0.0.1` | IBKR Gateway hostname |
-| `IBKR_GATEWAY_PORT` | `4001` | IBKR Gateway port |
+| `PAPER_GATEWAY_PORT` | `4002` | Paper trading port |
+| `PAPER_CLIENT_ID` | `1` | Paper trading client ID |
+| `LIVE_GATEWAY_PORT` | `4001` | Live trading port |
+| `LIVE_CLIENT_ID` | `777` | Live trading client ID |
 | `TRADING_MODE` | `paper` | `paper` or `live` |
 | `ORDERS_ENABLED` | `false` | Enable order placement |
 | `API_PORT` | `8000` | FastAPI server port |
