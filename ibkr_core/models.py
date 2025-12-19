@@ -140,8 +140,16 @@ class AccountPnl(BaseModel):
 
 
 class OrderSpec(BaseModel):
-    """Client-side specification of an order to be placed."""
-    
+    """Client-side specification of an order to be placed.
+
+    Supports basic orders (MKT, LMT, STP, STP_LMT) and advanced orders:
+    - TRAIL: Trailing stop (requires trailingAmount OR trailingPercent)
+    - TRAIL_LIMIT: Trailing stop-limit (requires trailing params + limitPrice offset)
+    - BRACKET: Entry + take profit + stop loss (requires takeProfitPrice + stopLossPrice)
+    - MOC: Market-on-close
+    - OPG: Market-on-open (opening auction)
+    """
+
     accountId: Optional[str] = Field(None, description="Target account for the order.")
     instrument: SymbolSpec = Field(..., description="Instrument to trade.")
     side: str = Field(..., description="Order side.")
@@ -153,7 +161,22 @@ class OrderSpec(BaseModel):
     outsideRth: bool = Field(False, description="Allow execution outside regular trading hours.")
     clientOrderId: Optional[str] = Field(None, description="Client-generated idempotency key.")
     transmit: bool = Field(True, description="Whether to transmit the order immediately once accepted by IBKR.")
-    
+
+    # Trailing stop parameters (Phase 4.5)
+    trailingAmount: Optional[float] = Field(None, gt=0, description="Trailing amount in price units (for TRAIL/TRAIL_LIMIT).")
+    trailingPercent: Optional[float] = Field(None, gt=0, le=100, description="Trailing percentage (for TRAIL/TRAIL_LIMIT).")
+    trailStopPrice: Optional[float] = Field(None, ge=0, description="Initial stop price for trailing orders.")
+
+    # Bracket order parameters (Phase 4.5)
+    takeProfitPrice: Optional[float] = Field(None, ge=0, description="Take profit limit price for bracket orders.")
+    stopLossPrice: Optional[float] = Field(None, ge=0, description="Stop loss trigger price for bracket orders.")
+    stopLossLimitPrice: Optional[float] = Field(None, ge=0, description="Stop loss limit price (for stop-limit child in bracket).")
+    bracketTransmit: bool = Field(True, description="Whether to transmit all bracket legs (final child transmits).")
+
+    # OCA (One-Cancels-All) parameters (Phase 4.5)
+    ocaGroup: Optional[str] = Field(None, description="OCA group name for linked orders.")
+    ocaType: Optional[int] = Field(None, ge=1, le=3, description="OCA type: 1=cancel with block, 2=reduce with block, 3=reduce without block.")
+
     @field_validator("side")
     @classmethod
     def validate_side(cls, v: str) -> str:
@@ -161,29 +184,46 @@ class OrderSpec(BaseModel):
         if v not in {"BUY", "SELL"}:
             raise ValueError(f"side must be 'BUY' or 'SELL', got {v}")
         return v
-    
+
     @field_validator("orderType")
     @classmethod
     def validate_order_type(cls, v: str) -> str:
         """Validate order type."""
-        allowed = {"MKT", "LMT", "STP", "STP_LMT"}
+        allowed = {"MKT", "LMT", "STP", "STP_LMT", "TRAIL", "TRAIL_LIMIT", "BRACKET", "MOC", "OPG"}
         if v not in allowed:
             raise ValueError(f"orderType must be one of {allowed}, got {v}")
         return v
-    
+
     @field_validator("tif")
     @classmethod
     def validate_tif(cls, v: str) -> str:
         """Validate time-in-force."""
-        allowed = {"DAY", "GTC", "IOC", "FOK"}
+        # MOC and OPG use tif internally but user doesn't need to set it
+        allowed = {"DAY", "GTC", "IOC", "FOK", "MOC", "OPG"}
         if v not in allowed:
             raise ValueError(f"tif must be one of {allowed}, got {v}")
         return v
 
 
+class OrderLeg(BaseModel):
+    """A single leg of a multi-leg order (bracket, OCA, etc.)."""
+
+    role: str = Field(..., description="Role of this leg: 'entry', 'take_profit', 'stop_loss', or 'child'.")
+    orderType: str = Field(..., description="Order type for this leg (MKT, LMT, STP, etc.).")
+    side: str = Field(..., description="Order side (BUY or SELL).")
+    quantity: float = Field(..., gt=0, description="Quantity for this leg.")
+    limitPrice: Optional[float] = Field(None, description="Limit price if applicable.")
+    stopPrice: Optional[float] = Field(None, description="Stop price if applicable.")
+    trailingAmount: Optional[float] = Field(None, description="Trailing amount if applicable.")
+    trailingPercent: Optional[float] = Field(None, description="Trailing percent if applicable.")
+    tif: str = Field("DAY", description="Time-in-force for this leg.")
+    estimatedPrice: Optional[float] = Field(None, description="Estimated execution price.")
+    estimatedNotional: Optional[float] = Field(None, description="Estimated notional for this leg.")
+
+
 class OrderPreview(BaseModel):
     """Estimated impact and characteristics of an order, without sending it."""
-    
+
     orderSpec: OrderSpec = Field(..., description="The original order specification.")
     estimatedPrice: Optional[float] = Field(None, ge=0, description="Estimated execution price.")
     estimatedNotional: Optional[float] = Field(None, ge=0, description="Estimated notional value in account currency.")
@@ -191,6 +231,10 @@ class OrderPreview(BaseModel):
     estimatedInitialMarginChange: Optional[float] = Field(None, description="Estimated change in initial margin requirement.")
     estimatedMaintenanceMarginChange: Optional[float] = Field(None, description="Estimated change in maintenance margin requirement.")
     warnings: List[str] = Field(default_factory=list, description="Human-readable warnings.")
+
+    # Multi-leg support (Phase 4.5)
+    legs: List[OrderLeg] = Field(default_factory=list, description="Order legs for bracket/OCA orders.")
+    totalNotional: Optional[float] = Field(None, description="Total worst-case notional across all legs.")
 
 
 class OrderStatus(BaseModel):
@@ -220,13 +264,17 @@ class OrderStatus(BaseModel):
 
 class OrderResult(BaseModel):
     """Result of an attempt to place an order."""
-    
-    orderId: Optional[str] = Field(None, description="Broker order identifier, if accepted.")
+
+    orderId: Optional[str] = Field(None, description="Broker order identifier, if accepted (primary/entry order).")
     clientOrderId: Optional[str] = Field(None, description="Client-provided id, if any.")
     status: str = Field(..., description="High-level result status.")
     orderStatus: Optional[OrderStatus] = Field(None, description="Current order status if available.")
     errors: List[str] = Field(default_factory=list, description="Errors returned from broker or validation.")
-    
+
+    # Multi-leg support (Phase 4.5)
+    orderIds: List[str] = Field(default_factory=list, description="All order IDs for multi-leg orders.")
+    orderRoles: Dict[str, str] = Field(default_factory=dict, description="Mapping of role -> order_id (entry, take_profit, stop_loss).")
+
     @field_validator("status")
     @classmethod
     def validate_result_status(cls, v: str) -> str:
