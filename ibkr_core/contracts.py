@@ -8,7 +8,6 @@ Provides mapping from logical SymbolSpec to IBKR Contract objects with:
 """
 
 import logging
-from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 from ib_insync import Contract, Future, Index, Option, Stock
