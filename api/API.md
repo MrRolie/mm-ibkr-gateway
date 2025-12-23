@@ -72,6 +72,7 @@ curl http://localhost:8000/account/summary
 Check API and IBKR connection status.
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -103,6 +104,7 @@ Check API and IBKR connection status.
 Get current quote for a symbol.
 
 **Request:**
+
 ```json
 {
   "symbol": "AAPL",
@@ -113,6 +115,7 @@ Get current quote for a symbol.
 ```
 
 **Response:**
+
 ```json
 {
   "symbol": "AAPL",
@@ -134,6 +137,7 @@ Get current quote for a symbol.
 Get historical OHLCV bars.
 
 **Request:**
+
 ```json
 {
   "symbol": "AAPL",
@@ -155,6 +159,7 @@ Get historical OHLCV bars.
 | rthOnly | Regular trading hours only |
 
 **Response:**
+
 ```json
 {
   "symbol": "AAPL",
@@ -184,9 +189,11 @@ Get historical OHLCV bars.
 Get account balances, margin, and buying power.
 
 **Query Parameters:**
+
 - `account_id` (optional): Specific account ID. Defaults to first managed account.
 
 **Response:**
+
 ```json
 {
   "accountId": "DU1234567",
@@ -206,9 +213,11 @@ Get account balances, margin, and buying power.
 Get all open positions.
 
 **Query Parameters:**
+
 - `account_id` (optional): Specific account ID.
 
 **Response:**
+
 ```json
 {
   "accountId": "DU1234567",
@@ -236,10 +245,12 @@ Get all open positions.
 Get realized and unrealized P&L.
 
 **Query Parameters:**
+
 - `account_id` (optional): Specific account ID.
 - `timeframe` (optional): Not yet implemented.
 
 **Response:**
+
 ```json
 {
   "accountId": "DU1234567",
@@ -269,6 +280,7 @@ Get realized and unrealized P&L.
 Preview an order without placing it.
 
 **Request:**
+
 ```json
 {
   "instrument": {
@@ -286,6 +298,7 @@ Preview an order without placing it.
 ```
 
 **Supported Order Types:**
+
 - `MKT` - Market order
 - `LMT` - Limit order (requires `limitPrice`)
 - `STP` - Stop order (requires `stopPrice`)
@@ -297,6 +310,7 @@ Preview an order without placing it.
 - `OPG` - Market-on-open
 
 **Response:**
+
 ```json
 {
   "orderSpec": { ... },
@@ -318,6 +332,7 @@ Place an order.
 **Request:** Same as `/orders/preview`
 
 **Response:**
+
 ```json
 {
   "orderId": "12345",
@@ -344,6 +359,7 @@ Place an order.
 | SIMULATED | ORDERS_ENABLED=false (not actually placed) |
 
 For **BRACKET** orders, `orderIds` contains all 3 order IDs and `orderRoles` maps role to ID:
+
 ```json
 {
   "orderIds": ["12345", "12346", "12347"],
@@ -360,6 +376,7 @@ For **BRACKET** orders, `orderIds` contains all 3 order IDs and `orderRoles` map
 Cancel an open order.
 
 **Response:**
+
 ```json
 {
   "orderId": "12345",
@@ -380,6 +397,7 @@ Cancel an open order.
 Get current order status.
 
 **Response:**
+
 ```json
 {
   "orderId": "12345",
@@ -409,6 +427,7 @@ Get current order status.
 Get all currently open orders.
 
 **Response:**
+
 ```json
 [
   {
@@ -493,6 +512,7 @@ Configure via `API_REQUEST_TIMEOUT` environment variable.
 ## OpenAPI / Swagger
 
 Interactive API documentation available at:
+
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
