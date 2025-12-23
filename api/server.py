@@ -27,6 +27,7 @@ from api.dependencies import (
     IBKRClientManager,
     RequestContext,
     get_client_manager,
+    get_ibkr_executor,
     get_request_context,
     get_request_timeout,
     lifespan_context,
@@ -138,9 +139,12 @@ async def execute_ibkr_operation(
         client = await client_manager.get_client()
 
         # Run the blocking ibkr operation in thread pool with timeout
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: operation(client, *args, **kwargs)),
+            loop.run_in_executor(
+                get_ibkr_executor(),
+                lambda: operation(client, *args, **kwargs),
+            ),
             timeout=timeout_s,
         )
 
@@ -193,16 +197,20 @@ async def health_check(
     try:
         client = await client_manager.get_client(timeout=5)
         ibkr_connected = client.is_connected
-
-        if ibkr_connected:
-            loop = asyncio.get_event_loop()
-            server_time_dt = await loop.run_in_executor(
-                None, client.get_server_time
-            )
-            server_time = server_time_dt.isoformat()
     except Exception as e:
         logger.warning(f"Health check: IBKR not connected - {e}")
         ibkr_connected = False
+    else:
+        if ibkr_connected:
+            try:
+                loop = asyncio.get_running_loop()
+                server_time_dt = await loop.run_in_executor(
+                    get_ibkr_executor(),
+                    lambda: client.get_server_time(timeout_s=2.0),
+                )
+                server_time = server_time_dt.isoformat()
+            except Exception as e:
+                logger.warning(f"Health check: server time unavailable - {e}")
 
     status = "ok" if ibkr_connected else "degraded"
 

@@ -83,11 +83,14 @@ Check API and IBKR connection status.
 }
 ```
 
+**Note:** `server_time` is best-effort and may be `null` even when
+`ibkr_connected=true` if the server time request times out.
+
 | Field | Description |
 |-------|-------------|
 | status | `ok` if connected, `degraded` if not |
 | ibkr_connected | Boolean connection status |
-| server_time | IBKR server time (if connected) |
+| server_time | IBKR server time (best-effort; may be null if request times out) |
 | trading_mode | Current mode: `paper` or `live` |
 | orders_enabled | Whether real orders can be placed |
 
@@ -466,6 +469,7 @@ All errors follow a consistent format:
 - Default request timeout: 30 seconds
 - Historical data requests: 60 seconds
 - Connection timeout: 10 seconds
+- Health check server time: 2 seconds (best-effort)
 
 Configure via `API_REQUEST_TIMEOUT` environment variable.
 

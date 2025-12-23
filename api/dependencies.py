@@ -13,6 +13,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 from fastapi import Request
@@ -21,6 +22,44 @@ from ibkr_core.client import IBKRClient, ConnectionError as IBKRConnectionError
 from ibkr_core.config import get_config
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# IBKR Executor
+# =============================================================================
+
+
+def _init_ibkr_executor():
+    """Ensure an asyncio loop exists for the IBKR worker thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+
+def _create_ibkr_executor() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(
+        max_workers=1,
+        thread_name_prefix="ibkr",
+        initializer=_init_ibkr_executor,
+    )
+
+
+_IBKR_EXECUTOR: Optional[ThreadPoolExecutor] = None
+
+
+def get_ibkr_executor() -> ThreadPoolExecutor:
+    """Get the dedicated executor for IBKR operations."""
+    global _IBKR_EXECUTOR
+    if _IBKR_EXECUTOR is None or getattr(_IBKR_EXECUTOR, "_shutdown", False):
+        _IBKR_EXECUTOR = _create_ibkr_executor()
+    return _IBKR_EXECUTOR
+
+
+def shutdown_ibkr_executor() -> None:
+    """Shut down the dedicated IBKR executor."""
+    global _IBKR_EXECUTOR
+    if _IBKR_EXECUTOR is not None:
+        _IBKR_EXECUTOR.shutdown(wait=True)
+        _IBKR_EXECUTOR = None
 
 
 # =============================================================================
@@ -68,9 +107,10 @@ class IBKRClientManager:
 
                 try:
                     # ib_insync is sync, run in thread pool
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     await loop.run_in_executor(
-                        None, lambda: self._client.connect(timeout=timeout)
+                        get_ibkr_executor(),
+                        lambda: self._client.connect(timeout=timeout),
                     )
                     logger.info(
                         f"IBKR client connected: mode={self._client.mode}, "
@@ -106,8 +146,11 @@ class IBKRClientManager:
         async with self._lock:
             if self._client is not None:
                 try:
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(None, self._client.disconnect)
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        get_ibkr_executor(),
+                        self._client.disconnect,
+                    )
                 except Exception as e:
                     logger.warning(f"Error disconnecting IBKR client: {e}")
                 finally:
@@ -224,9 +267,12 @@ def run_sync_with_timeout(func: Callable, timeout_s: float, *args, **kwargs):
     This is useful for running ib_insync operations that are blocking.
     """
     async def _run():
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: func(*args, **kwargs)),
+            loop.run_in_executor(
+                get_ibkr_executor(),
+                lambda: func(*args, **kwargs),
+            ),
             timeout=timeout_s,
         )
 
@@ -260,3 +306,5 @@ async def lifespan_context(app):
     logger.info("API server shutting down")
     await _client_manager.disconnect()
     logger.info("IBKR client disconnected")
+
+    shutdown_ibkr_executor()

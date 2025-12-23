@@ -8,6 +8,7 @@ Provides a stable, reconnection-aware wrapper around ib_insync.IB with:
 - Connection health monitoring
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -206,9 +207,12 @@ class IBKRClient:
         logger.info("Connection lost or not established. Reconnecting...")
         self.connect(timeout=timeout)
 
-    def get_server_time(self) -> datetime:
+    def get_server_time(self, timeout_s: Optional[float] = None) -> datetime:
         """
         Get current server time from IBKR.
+
+        Args:
+            timeout_s: Optional timeout in seconds for the request.
 
         Returns:
             Server time as datetime.
@@ -219,7 +223,23 @@ class IBKRClient:
         if not self.is_connected:
             raise ConnectionError("Not connected to IBKR")
 
-        return self._ib.reqCurrentTime()
+        if timeout_s is None:
+            return self._ib.reqCurrentTime()
+
+        loop = asyncio.get_event_loop()
+
+        async def _get_time():
+            return await asyncio.wait_for(
+                self._ib.reqCurrentTimeAsync(),
+                timeout=timeout_s,
+            )
+
+        try:
+            return loop.run_until_complete(_get_time())
+        except asyncio.TimeoutError as e:
+            raise ConnectionError(
+                f"Server time request timed out after {timeout_s}s"
+            ) from e
 
     def __enter__(self) -> "IBKRClient":
         """Context manager entry - connect."""
