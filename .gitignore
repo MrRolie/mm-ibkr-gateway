@@ -1,5 +1,4 @@
 # Additional files to ignore
-.context/
 .claude/
 .vscode/
 .benchmarks/
