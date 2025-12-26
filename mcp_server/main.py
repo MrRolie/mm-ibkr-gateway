@@ -378,10 +378,11 @@ async def preview_order(
     stop_loss_price: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
-    Preview an order without placing it.
+    Preview an order without placing it (SAFE - read-only simulation).
 
     Returns estimated execution details including price, notional, commission,
     and margin impact. Use this before placing an order to verify the details.
+    This tool always works regardless of ORDERS_ENABLED setting.
 
     Args:
         instrument_symbol: Symbol/ticker (e.g., 'AAPL', 'MES')
@@ -451,10 +452,11 @@ async def place_order(
     stop_loss_price: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
-    Place an order.
+    Place an order (SAFE BY DEFAULT - requires ORDERS_ENABLED=true).
 
-    IMPORTANT: Respects ORDERS_ENABLED setting. If orders are disabled,
+    IMPORTANT: Orders are DISABLED by default. If ORDERS_ENABLED=false,
     returns SIMULATED status instead of actually placing the order.
+    Set ORDERS_ENABLED=true in .env to enable real order placement.
 
     Args:
         instrument_symbol: Symbol/ticker (e.g., 'AAPL', 'MES')

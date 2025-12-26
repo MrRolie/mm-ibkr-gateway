@@ -5,6 +5,206 @@ A complete, modular integration of Interactive Brokers (IBKR) with multiple inte
 Querying Claude for Available Tools
 ![Claude MCP Integration](images/claude_mcp_integrated.png)
 
+## ⚠️ SAFETY FIRST ⚠️
+
+This system is **SAFE BY DEFAULT**:
+
+✅ **Paper trading mode**: System defaults to paper trading (`TRADING_MODE=paper`)
+✅ **Orders disabled**: Order placement is disabled by default (`ORDERS_ENABLED=false`)
+✅ **Dual-toggle protection**: Live trading requires BOTH flags AND confirmation file
+✅ **Preview before place**: MCP tools require explicit confirmation for all orders
+
+### Default Behavior
+
+- **Market data**: ✅ Available (read-only)
+- **Account status**: ✅ Available (read-only)
+- **Order preview**: ✅ Available (simulation)
+- **Order placement**: ❌ Disabled (returns SIMULATED status)
+
+### How to Enable Live Trading (⚠️ USE WITH EXTREME CAUTION)
+
+We **strongly recommend** staying in paper mode. If you must enable live trading:
+
+1. Set `TRADING_MODE=live` in `.env`
+2. Set `ORDERS_ENABLED=true` in `.env`
+3. Create confirmation file: `touch ~/ibkr_live_trading_confirmed.txt`
+4. Set `LIVE_TRADING_OVERRIDE_FILE=~/ibkr_live_trading_confirmed.txt` in `.env`
+
+**WARNING**: Once enabled, the system can place REAL orders with REAL money.
+
+### Testing Live Trading Setup
+
+Test with SMALL orders first. Use limit orders FAR from market price to avoid fills.
+Monitor your IBKR account portal during testing.
+
+---
+
+## Quick Demo (5 Minutes)
+
+Want to see the system in action? Run our interactive demo to explore market data and account features.
+
+### Prerequisites
+
+- IBKR account with paper trading enabled
+- IBKR Gateway or TWS running in paper mode (port 4002)
+- Market data subscriptions (paper accounts have free delayed data)
+
+### Run the Demo
+
+```bash
+# 1. Copy environment file
+cp .env.example .env
+
+# 2. Ensure TRADING_MODE=paper in .env (default)
+
+# 3. Install dependencies
+poetry install
+
+# 4. Run the demo
+python -m ibkr_core.demo
+# or
+ibkr-demo
+```
+
+### What the Demo Shows
+
+The demo showcases three core capabilities:
+
+1. **Market Data**
+   - Real-time quote for AAPL (stock)
+   - Historical bars for SPY (ETF) - last 5 days
+
+2. **Account Status**
+   - Account summary (balance, buying power, P&L)
+   - Current positions (if any)
+
+### Docker Demo
+
+You can also run the demo in Docker:
+
+```bash
+docker-compose -f docker-compose.demo.yml up
+```
+
+**Note**: The Docker container connects to IBKR Gateway running on your host machine via `host.docker.internal`.
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "IBKR Gateway not detected" | Ensure TWS/Gateway is running on port 4002 |
+| "Demo requires TRADING_MODE=paper" | Set `TRADING_MODE=paper` in your `.env` file |
+| "Market data permission error" | Paper accounts have free delayed data; check IBKR subscriptions |
+| Connection timeout | Verify IBKR Gateway API settings are enabled (Configure → API → Settings) |
+
+### Expected Output
+
+The demo displays:
+- ✓ Connection status with server time
+- ✓ AAPL quote with bid/ask/last prices
+- ✓ SPY historical bars (last 5 entries)
+- ✓ Account summary with buying power
+- ✓ Current positions (if any)
+- ✓ Next steps and documentation links
+
+---
+
+## Command-Line Interface
+
+The `ibkr-gateway` command provides a user-friendly CLI for common operations.
+
+### Available Commands
+
+```bash
+ibkr-gateway --help              # Show all commands
+ibkr-gateway healthcheck         # Check IBKR Gateway connection
+ibkr-gateway demo                # Run interactive demo
+ibkr-gateway start-api           # Start REST API server
+ibkr-gateway version             # Show version info
+```
+
+### Health Check
+
+Check the connection to IBKR Gateway:
+
+```bash
+# Basic health check
+ibkr-gateway healthcheck
+
+# Check with paper mode (force)
+ibkr-gateway --paper healthcheck
+
+# Check with custom host/port
+ibkr-gateway --host localhost --port 4002 healthcheck
+```
+
+**Output**: Connection status, server time, managed accounts
+
+### Demo Mode
+
+Run the interactive 5-minute demo:
+
+```bash
+# Run demo (paper mode required)
+ibkr-gateway demo
+
+# Demo with explicit paper mode
+ibkr-gateway --paper demo
+```
+
+The demo automatically runs in paper mode for safety, even if you specify `--live`.
+
+### Start API Server
+
+Launch the FastAPI REST server:
+
+```bash
+# Start with defaults (port 8000)
+ibkr-gateway start-api
+
+# Custom port
+ibkr-gateway start-api --port 8080
+
+# Development mode with auto-reload
+ibkr-gateway start-api --reload
+
+# Custom host binding
+ibkr-gateway start-api --host 0.0.0.0 --port 8000
+```
+
+**Endpoints available at**:
+- API Documentation: http://localhost:8000/docs
+- Health Check: http://localhost:8000/health
+- OpenAPI Schema: http://localhost:8000/openapi.json
+
+### Global Options
+
+Apply to any command:
+
+- `--host <host>`: Override IBKR Gateway host
+- `--port <port>`: Override IBKR Gateway port
+- `--paper`: Force paper trading mode
+- `--live`: Force live trading mode (⚠️ **DANGEROUS**)
+- `--help`: Show help for any command
+
+### Examples
+
+```bash
+# Check paper trading connection
+ibkr-gateway --paper healthcheck
+
+# Run demo in paper mode
+ibkr-gateway demo
+
+# Start API server on custom port with auto-reload
+ibkr-gateway start-api --port 8080 --reload
+
+# Force live mode connection check (⚠️ use with caution)
+ibkr-gateway --live healthcheck
+```
+
+---
+
 ## Project Status
 
 | Phase | Description | Status |
@@ -328,18 +528,6 @@ pytest -m "not integration"
 | `API_PORT` | `8000` | FastAPI server port |
 | `IBKR_API_URL` | `http://localhost:8000` | REST API URL (for MCP server) |
 | `MCP_REQUEST_TIMEOUT` | `60` | MCP request timeout in seconds |
-
----
-
-## Safety Features
-
-1. **Paper Trading Default**: `TRADING_MODE=paper` is the default. Live trading requires explicit configuration.
-
-2. **Orders Disabled by Default**: `ORDERS_ENABLED=false` prevents accidental order placement. Orders return `SIMULATED` status when disabled.
-
-3. **Live Trading Safeguard**: Live trading requires both `TRADING_MODE=live` AND `ORDERS_ENABLED=true`.
-
-4. **API Authentication**: Optional API key support via `X-API-Key` header when `API_KEY` is set.
 
 ---
 

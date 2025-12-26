@@ -2,6 +2,17 @@
 
 REST API for Interactive Brokers Gateway integration.
 
+## ⚠️ Safety Notice
+
+This API is **SAFE BY DEFAULT**:
+
+- **Orders disabled**: Order placement is disabled by default (`ORDERS_ENABLED=false`)
+- **SIMULATED status**: When orders are disabled, the `/orders` endpoint returns a `SIMULATED` status instead of placing real orders
+- **Preview always works**: The `/orders/preview` endpoint always works regardless of settings (read-only simulation)
+- **Paper mode default**: System defaults to paper trading (`TRADING_MODE=paper`)
+
+To enable real order placement, you must explicitly set `ORDERS_ENABLED=true` in your `.env` file. For live trading with orders enabled, an additional confirmation file is required. See the main README for complete safety documentation.
+
 ## Quick Start
 
 ### Running the Server

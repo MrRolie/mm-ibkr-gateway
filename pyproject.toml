@@ -47,9 +47,13 @@ loguru = "^0.7"
 nest-asyncio = "^1.5"
 mcp = "^1.2"
 httpx = "^0.27"
+typer = {version = "^0.9.0", extras = ["all"]}
+rich = "^13.7"
 
 [tool.poetry.scripts]
+ibkr-gateway = "ibkr_core.cli:cli_main"
 ibkr-mcp = "mcp_server.main:main"
+ibkr-demo = "ibkr_core.demo:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4"
