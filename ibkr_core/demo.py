@@ -15,7 +15,7 @@ from typing import Optional
 
 from ibkr_core.client import IBKRClient, create_client, ConnectionError
 from ibkr_core.config import get_config, InvalidConfigError
-from ibkr_core.models import SymbolSpec, BarSize, Duration
+from ibkr_core.models import SymbolSpec
 from ibkr_core.market_data import (
     get_quote,
     get_historical_bars,
@@ -206,8 +206,8 @@ def demo_market_data(client: IBKRClient) -> bool:
         bars = get_historical_bars(
             spy_spec,
             client,
-            bar_size=BarSize.HOUR_1,
-            duration=Duration.DAYS_5
+            bar_size="1 hour",
+            duration="5 D"
         )
 
         print_success(f"Retrieved {len(bars)} bars")

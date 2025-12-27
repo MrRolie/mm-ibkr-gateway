@@ -1,5 +1,11 @@
 # IBKR Gateway
 
+[![CI](https://github.com/MrRolie/mm-ibkr-gateway/workflows/CI/badge.svg)](https://github.com/MrRolie/mm-ibkr-gateway/actions)
+[![codecov](https://codecov.io/gh/MrRolie/mm-ibkr-gateway/branch/main/graph/badge.svg)](https://codecov.io/gh/MrRolie/mm-ibkr-gateway)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A complete, modular integration of Interactive Brokers (IBKR) with multiple interfaces: direct Python, REST API, and Claude MCP integration.
 
 Querying Claude for Available Tools
@@ -492,24 +498,61 @@ mm-ibkr-gateway/
 
 ---
 
-## Running Tests
+## Development & Testing
+
+### Running Tests Locally
 
 ```bash
-# Run all tests
-pytest
+# Unit tests only (fast, no IBKR connection needed)
+poetry run pytest -m "not integration"
 
-# Run with verbose output
-pytest -v
+# All tests (requires IBKR Gateway running)
+poetry run pytest
 
-# Run specific test files
-pytest tests/test_mcp_tools.py tests/test_mcp_errors.py -v
+# With coverage
+poetry run pytest -m "not integration" --cov
 
-# Run with coverage
-pytest --cov=ibkr_core --cov=api --cov=mcp_server
-
-# Skip integration tests (no IBKR Gateway needed)
-pytest -m "not integration"
+# Specific test file
+poetry run pytest tests/test_cli.py -v
 ```
+
+### Code Quality
+
+```bash
+# Format code
+poetry run black .
+poetry run isort .
+
+# Lint
+poetry run flake8
+
+# Type check
+poetry run mypy ibkr_core api mcp_server
+
+# Security scan
+poetry run safety check
+poetry run bandit -r ibkr_core api mcp_server
+```
+
+### Pre-commit Hooks (Optional)
+
+Set up pre-commit hooks to automatically format and lint code:
+
+```bash
+poetry run pre-commit install
+```
+
+### Continuous Integration
+
+All pull requests are automatically tested with:
+- ✅ Code formatting (black, isort)
+- ✅ Linting (flake8)
+- ✅ Type checking (mypy)
+- ✅ Unit tests on Python 3.10, 3.11, 3.12
+- ✅ Coverage reporting (codecov)
+- ✅ Security scanning (safety, bandit)
+
+Integration tests run manually due to IBKR connection requirements.
 
 ---
 
