@@ -4,7 +4,8 @@ FastAPI dependencies for the API layer.
 Provides:
 - IBKR client management (singleton with connection pooling)
 - Request timeout handling
-- Logging context
+- Correlation ID management
+- Structured logging context
 """
 
 import asyncio
@@ -21,6 +22,12 @@ from fastapi import Request
 from ibkr_core.client import ConnectionError as IBKRConnectionError
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
+from ibkr_core.logging_config import (
+    clear_correlation_id,
+    get_correlation_id,
+    log_with_context,
+    set_correlation_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -188,22 +195,52 @@ def get_client_manager() -> IBKRClientManager:
 
 
 class RequestContext:
-    """Context for a single API request."""
+    """
+    Context for a single API request.
+
+    Manages correlation ID and request timing.
+    """
 
     def __init__(self, request: Request):
         self.request = request
-        self.request_id = str(uuid.uuid4())[:8]
+        # Generate full UUID for correlation ID
+        self.correlation_id = str(uuid.uuid4())
+        # Keep short request_id for backward compatibility
+        self.request_id = self.correlation_id[:8]
         self.start_time = time.time()
         self.endpoint = f"{request.method} {request.url.path}"
+        self.client_ip = request.client.host if request.client else "unknown"
+
+        # Set correlation ID in context for all subsequent logs
+        set_correlation_id(self.correlation_id)
+
+        # Log request start with structured data
+        log_with_context(
+            logger,
+            logging.INFO,
+            "Request started",
+            endpoint=self.endpoint,
+            client_ip=self.client_ip,
+            method=request.method,
+            path=str(request.url.path),
+        )
 
     @property
     def elapsed_ms(self) -> float:
         """Elapsed time in milliseconds."""
         return (time.time() - self.start_time) * 1000
 
+    def cleanup(self):
+        """Clean up request context (call at end of request)."""
+        clear_correlation_id()
+
 
 def get_request_context(request: Request) -> RequestContext:
-    """Dependency to get request context."""
+    """
+    Dependency to get request context.
+
+    Creates a new RequestContext and sets the correlation ID.
+    """
     return RequestContext(request)
 
 
@@ -213,19 +250,30 @@ def get_request_context(request: Request) -> RequestContext:
 
 
 def log_request(ctx: RequestContext, status: str = "success", error: str = None):
-    """Log request completion."""
+    """
+    Log request completion with structured data.
+
+    Args:
+        ctx: Request context
+        status: Request status ("success" or "error")
+        error: Error message if status is "error"
+    """
+    # Prepare structured log data
     log_data = {
-        "request_id": ctx.request_id,
         "endpoint": ctx.endpoint,
         "elapsed_ms": round(ctx.elapsed_ms, 2),
         "status": status,
+        "client_ip": ctx.client_ip,
     }
 
     if error:
         log_data["error"] = error
-        logger.warning(f"Request failed: {log_data}")
+        log_with_context(logger, logging.WARNING, "Request failed", **log_data)
     else:
-        logger.info(f"Request completed: {log_data}")
+        log_with_context(logger, logging.INFO, "Request completed", **log_data)
+
+    # Clean up correlation ID context
+    ctx.cleanup()
 
 
 # =============================================================================

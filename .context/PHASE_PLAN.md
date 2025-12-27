@@ -745,67 +745,23 @@ Now you expose this API via MCP tools.
 
 ---
 
-## Phase 7 – LLM tool integration and NL layer
+## Phase 7 – LLM tool integration and NL layer ⏭️ SKIPPED
 
-Now you wire this into a model for natural-language.
+### Decision Rationale
 
-### Goals
+Phase 7 is **SKIPPED** because:
 
-* Natural language → correct tool calls.
-* Guardrails around order placement.
+1. **MCP tools already enable LLM integration**: The MCP server (Phase 6) provides all necessary tools for LLM interaction via Claude Desktop or other MCP clients.
+2. **No need for custom agent**: Building a custom NL chat loop duplicates functionality already available through MCP.
+3. **Better separation of concerns**: Keep this project focused on IBKR integration, let MCP clients handle conversation flow.
+4. **Safety enforced at API layer**: Order confirmation and safety guardrails are already implemented in the API and MCP tools (ORDERS_ENABLED flag, preview vs. place distinction).
 
-### Deliverables
+### Alternative Approach
 
-* `nl/agent_prompts.md`:
-
-  * System prompt describing:
-
-    * Available tools and when to use them.
-    * Safety rules:
-
-      * Always show an order preview before placing an order.
-      * Never place a real order unless user explicitly confirms and environment allows.
-* `nl/agent.py`:
-
-  * Functions to:
-
-    * Take user prompt, call LLM with MCP tools available.
-    * Stream responses.
-    * Optionally implement two-step confirmation for trades.
-
-### Implementation steps
-
-1. Define canonical intents:
-
-   * "fetch data": ask for quotes/historical.
-   * "fetch account": call account tools.
-   * "place order": always:
-
-     1. Call `preview_order`.
-     2. Explain to user what will be done.
-     3. Wait for a clear "confirm" message.
-     4. Call `place_order`.
-2. Implement simple chat loop:
-
-   * User text → LLM with tools.
-   * Execute tools when requested.
-   * Return combined answer.
-
-### Tests
-
-* Manual scripted tests:
-
-  * "What's my net liquidation?" → only calls account tools.
-  * "Get me the last 5 days of MES futures data" → historical data tool.
-  * "Buy 1 MES at market":
-
-    * Step 1: LLM calls `preview_order`.
-    * Step 2: LLM explains preview in natural language.
-    * Step 3: Only when user replies "Yes, confirm" → tool call `place_order`.
-* Edge cases:
-
-  * Ambiguous requests ("buy some MES") → LLM must ask for quantity or clarify.
-  * User says "never mind" after preview → no order placed.
+Users who need natural language interaction can:
+- Use Claude Desktop with the MCP server configured
+- Use any other MCP-compatible client
+- Build their own custom agent using the MCP tools
 
 ---
 
@@ -813,29 +769,182 @@ Now you wire this into a model for natural-language.
 
 ### Goals
 
-* Observability.
-* Simulation mode for strategies / order flows without touching IBKR.
-* Clear audit trails.
+* **Observability**: Structured logging with correlation IDs and comprehensive metrics
+* **Audit trails**: Persistent order history and event logs in SQLite
+* **Simulation mode**: Basic order flow simulation for testing without IBKR connection
+* **Production readiness**: Monitoring, debugging, and compliance capabilities
+
+### Technology Stack
+
+Based on specifications:
+- **Logging**: Python standard logging with `python-json-logger` for structured JSON logs
+- **Persistence**: SQLite for audit logs and order history
+- **Metrics**: In-memory metrics with `/metrics` API endpoint
+- **Simulation**: Basic order simulation with validation and state transitions
+- **Correlation**: UUID4-based request correlation IDs
 
 ### Deliverables
 
-* Logging:
+#### 8.1 – Structured Logging & Correlation IDs
 
-  * Per tool call: correlation ID, request, response summary, timing.
-* Metrics:
+* `ibkr_core/logging_config.py`:
+  * JSON log formatter configuration
+  * Correlation ID context management
+  * Log level configuration via `LOG_LEVEL` env var
+* API middleware:
+  * Generate UUID4 correlation_id for each request
+  * Propagate correlation_id through request context
+  * Add correlation_id to all log records
+  * Log request/response with timing
+* IBKR client logging:
+  * Wrap all IBKR operations with correlation_id
+  * Log operation start/end with duration
 
-  * Market data latency, failure rates, order error rates.
-* Simulation backend (optional extension):
+#### 8.2 – Audit Trail & Order History (SQLite)
 
-  * Replace IBKR client with a mock exchange for certain environments.
+* `ibkr_core/persistence.py`:
+  * Database connection management
+  * Schema definitions:
+    * `audit_log` table: Full event log with correlation IDs
+    * `order_history` table: Complete order lifecycle tracking
+  * Functions:
+    * `record_audit_event(event_type, data, correlation_id)`
+    * `save_order(order_id, order_data)`
+    * `update_order_status(order_id, status, fill_data)`
+    * `query_orders(filters)` - by symbol, date range, status, etc.
+* Integration points:
+  * Record PREVIEW events with market snapshot
+  * Record SUBMIT events with config snapshot
+  * Record status updates (FILLED, CANCELLED, REJECTED)
+  * Store full order spec and preview/fill data as JSON
+* Database management:
+  * Auto-create database on first use
+  * Configurable path via `AUDIT_DB_PATH` env var
+  * Simple schema versioning
+
+#### 8.3 – Metrics & Monitoring (In-Memory)
+
+* `ibkr_core/metrics.py`:
+  * `MetricsCollector` singleton with thread-safe operations
+  * Metric types:
+    * **Counters**: `api_requests_total{endpoint, status}`, `ibkr_operations_total{operation, status}`, `orders_total{status, symbol}`
+    * **Histograms**: `api_request_duration_seconds{endpoint}`, `ibkr_operation_duration_seconds{operation}`, `order_time_to_fill_seconds{symbol}`
+    * **Gauges**: `ibkr_connection_status`, `active_orders{status}`
+  * Histogram percentiles: p50, p90, p95, p99
+* API endpoint:
+  * `GET /metrics`: Return all metrics as JSON
+  * Format: `{counters: {...}, histograms: {...}, gauges: {...}}`
+* Integration:
+  * Middleware records all API requests
+  * IBKR client records connection status and operations
+  * Order manager tracks execution metrics
+
+#### 8.4 – Simulation Backend (Basic)
+
+* `ibkr_core/simulation.py`:
+  * `SimulatedIBKRClient` class:
+    * Same interface as `IBKRClient`
+    * Simulated connection (instant, always succeeds)
+    * Deterministic contract resolution
+    * Synthetic quote generation
+    * Order validation (same rules as real)
+    * State machine for order lifecycle
+  * Order execution simulation:
+    * Market orders: fill immediately at synthetic quote
+    * Limit orders: basic price check simulation
+    * State transitions: PendingSubmit → Submitted → Filled
+    * Simulated delays for realistic testing
+  * Simulated registry tracking all orders
+* Configuration:
+  * `IBKR_MODE=simulation` env var enables simulation
+  * Factory function: `get_ibkr_client()` returns appropriate client
+  * API responses include `simulation: true` flag when active
+* Use cases:
+  * Testing order flows without IBKR connection
+  * Strategy validation
+  * CI/CD integration tests
+
+#### 8.5 – Documentation & Tooling
+
+* Documentation updates:
+  * README: "Monitoring & Observability" section
+  * API.md: Document `/metrics` endpoint
+  * New: `MONITORING.md` with observability guide
+  * New: `SIMULATION.md` with simulation mode guide
+  * `.env.example`: Add Phase 8 variables
+* Example scripts:
+  * `scripts/query_audit_log.py`: Query audit database
+  * `scripts/export_order_history.py`: Export to CSV
+  * `scripts/metrics_dashboard.py`: Simple CLI metrics viewer
+* Configuration:
+  * `AUDIT_DB_PATH`: Database file path (default: `./data/audit.db`)
+  * `IBKR_MODE`: `paper|live|simulation` (default: `paper`)
+  * `LOG_LEVEL`: `DEBUG|INFO|WARNING|ERROR` (default: `INFO`)
+  * `LOG_FORMAT`: `json|text` (default: `json`)
+
+### Implementation Steps
+
+1. **8.1 – Logging** (1-2 days)
+   - Set up python-json-logger
+   - Implement correlation ID middleware
+   - Add structured logging across modules
+   - Write tests
+
+2. **8.2 – Persistence** (2-3 days)
+   - Design SQLite schema
+   - Implement persistence layer
+   - Integrate audit logging into order flow
+   - Write tests and queries
+
+3. **8.3 – Metrics** (1-2 days)
+   - Build MetricsCollector
+   - Add metrics collection points
+   - Create `/metrics` endpoint
+   - Write tests
+
+4. **8.4 – Simulation** (2-3 days)
+   - Implement SimulatedIBKRClient
+   - Build order execution simulator
+   - Update factory functions
+   - Write comprehensive tests
+
+5. **8.5 – Documentation** (1 day)
+   - Update all documentation
+   - Write monitoring guide
+   - Create example scripts
+   - Update environment config
 
 ### Tests
 
-* Confirm every order attempt (even rejected) is logged with details.
-* Run a "replay" script:
+**Unit tests** (estimated ~100 tests):
+* `tests/test_logging_correlation.py`: Correlation ID propagation (10 tests)
+* `tests/test_logging_structured.py`: JSON format validation (8 tests)
+* `tests/test_persistence_audit.py`: Audit log CRUD (15 tests)
+* `tests/test_persistence_orders.py`: Order history tracking (20 tests)
+* `tests/test_metrics_collector.py`: Metrics collection (18 tests)
+* `tests/test_metrics_endpoint.py`: API endpoint (8 tests)
+* `tests/test_simulation_client.py`: Simulated client (25 tests)
+* `tests/test_simulation_orders.py`: Order simulation (20 tests)
 
-  * Read a log of previous requests.
-  * Replay them in simulation mode and compare outcomes.
+**Integration tests** (estimated ~30 tests):
+* `tests/test_audit_trail_integration.py`: End-to-end audit trail (10 tests)
+* `tests/test_metrics_integration.py`: Metrics during real operations (12 tests)
+* `tests/test_simulation_integration.py`: Full API in simulation mode (15 tests)
+
+**Performance tests**:
+* Baseline latency benchmarks
+* Metrics overhead measurement
+* Database write performance
+
+### Success Criteria
+
+- [ ] All API requests have correlation IDs in logs
+- [ ] Every order lifecycle event is recorded in audit database
+- [ ] `/metrics` endpoint returns comprehensive metrics
+- [ ] Simulation mode allows full order flow testing without IBKR
+- [ ] Zero performance degradation >5% from logging/metrics overhead
+- [ ] Complete documentation for monitoring and troubleshooting
+- [ ] All tests passing (unit + integration)
 
 ---
 
@@ -845,15 +954,16 @@ Now you wire this into a model for natural-language.
 
    * Phase 2 (market_data)
    * Exposed via Phase 5 (API) + Phase 6 (MCP)
-   * Used by Phase 7 (NL agent)
+   * Logged and monitored in Phase 8
 
 2. **Fetching account status**
 
    * Phase 3 (account)
-   * Same exposure + NL flow as above
+   * Same exposure + monitoring
 
 3. **Placing orders**
 
    * Phase 4 (orders)
    * Strict safety in Phase 0 + 4
-   * NL agent in Phase 7 enforces preview/confirm flow
+   * Full audit trail in Phase 8
+   * Testable via simulation in Phase 8

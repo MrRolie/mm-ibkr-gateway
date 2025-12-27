@@ -22,6 +22,7 @@ from ib_insync import LimitOrder, MarketOrder, Order, StopLimitOrder, StopOrder,
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
 from ibkr_core.contracts import resolve_contract
+from ibkr_core.logging_config import get_correlation_id, log_with_context
 from ibkr_core.market_data import get_quote
 from ibkr_core.models import (
     CancelResult,
@@ -31,6 +32,7 @@ from ibkr_core.models import (
     OrderSpec,
     OrderStatus,
 )
+from ibkr_core.persistence import record_audit_event, save_order, update_order_status
 
 logger = logging.getLogger(__name__)
 
@@ -858,7 +860,7 @@ def preview_order(
             f"notional={estimated_notional}"
         )
 
-        return OrderPreview(
+        preview_result = OrderPreview(
             orderSpec=order_spec,
             estimatedPrice=estimated_price,
             estimatedNotional=estimated_notional,
@@ -869,6 +871,26 @@ def preview_order(
             legs=legs,
             totalNotional=total_notional,
         )
+
+        # Record audit event for order preview
+        try:
+            record_audit_event(
+                event_type="ORDER_PREVIEW",
+                event_data={
+                    "symbol": order_spec.instrument.symbol,
+                    "side": order_spec.side,
+                    "quantity": order_spec.quantity,
+                    "order_type": order_spec.orderType,
+                    "estimated_price": estimated_price,
+                    "estimated_notional": estimated_notional,
+                    "legs_count": len(legs) if legs else 0,
+                },
+                account_id=order_spec.accountId,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record preview audit event: {e}")
+
+        return preview_result
 
     except OrderValidationError:
         raise
@@ -1000,6 +1022,48 @@ def place_order(
             result_status = "ACCEPTED"
 
         logger.info(f"Order placed: order_id={order_id}, status={order_status.status}")
+
+        # Record audit event and save to order history
+        try:
+            # Get configuration snapshot
+            config = get_config()
+            config_snapshot = {
+                "trading_mode": config.trading_mode,
+                "orders_enabled": config.orders_enabled,
+            }
+
+            # Save to order history database
+            save_order(
+                order_id=order_id,
+                account_id=order_spec.accountId or client.managed_accounts[0] if client.managed_accounts else "UNKNOWN",
+                symbol=symbol,
+                side=order_spec.side,
+                quantity=order_spec.quantity,
+                order_type=order_spec.orderType,
+                status=order_status.status,
+                ibkr_order_id=str(trade.order.orderId) if trade.order.orderId else None,
+                preview_data=preview.model_dump() if preview else None,
+                config_snapshot=config_snapshot,
+                market_snapshot={"quote": quote.model_dump()} if 'quote' in locals() else None,
+            )
+
+            # Record audit event
+            record_audit_event(
+                event_type="ORDER_SUBMIT",
+                event_data={
+                    "order_id": order_id,
+                    "ibkr_order_id": str(trade.order.orderId) if trade.order.orderId else None,
+                    "symbol": symbol,
+                    "side": order_spec.side,
+                    "quantity": order_spec.quantity,
+                    "order_type": order_spec.orderType,
+                    "status": order_status.status,
+                    "result_status": result_status,
+                },
+                account_id=order_spec.accountId or client.managed_accounts[0] if client.managed_accounts else None,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record order placement in audit: {e}")
 
         return OrderResult(
             orderId=order_id,
@@ -1199,6 +1263,20 @@ def cancel_order(
 
         if final_status in ("Cancelled", "ApiCancelled", "Inactive"):
             logger.info(f"Order {order_id} cancelled successfully")
+
+            # Update order status in database and record audit event
+            try:
+                update_order_status(order_id, "CANCELLED")
+                record_audit_event(
+                    event_type="ORDER_CANCELLED",
+                    event_data={
+                        "order_id": order_id,
+                        "ibkr_status": final_status,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record order cancellation in audit: {e}")
+
             return CancelResult(
                 orderId=order_id,
                 status="CANCELLED",

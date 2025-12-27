@@ -23,6 +23,7 @@ from fastapi import Depends, FastAPI, Path
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import verify_api_key
+from api.middleware import CorrelationIdMiddleware
 from api.dependencies import (
     IBKRClientManager,
     RequestContext,
@@ -58,12 +59,11 @@ from api.models import (
     QuoteRequest,
 )
 from ibkr_core.config import get_config
+from ibkr_core.logging_config import configure_logging
+from ibkr_core.metrics import get_metrics
 
-# Configure logging
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Configure structured logging with correlation IDs
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +96,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add correlation ID middleware for request tracking
+# Note: Middlewares are executed in reverse order of addition,
+# so this will run BEFORE CORS middleware
+app.add_middleware(CorrelationIdMiddleware)
 
 # Register exception handlers
 app.add_exception_handler(APIError, api_error_handler)
@@ -221,6 +226,34 @@ async def health_check(
         trading_mode=config.trading_mode,
         orders_enabled=config.orders_enabled,
     )
+
+
+# =============================================================================
+# Metrics Endpoint
+# =============================================================================
+
+
+@app.get(
+    "/metrics",
+    tags=["Health"],
+    summary="Get application metrics",
+    description=(
+        "Get all application metrics including counters, histograms, and gauges. "
+        "Metrics include API request counts/latencies, IBKR operation stats, and connection status."
+    ),
+)
+async def get_application_metrics():
+    """
+    Get application metrics.
+
+    Returns:
+        - uptime_seconds: Time since process start
+        - counters: Request counts by endpoint/status
+        - histograms: Latency distributions with percentiles (p50, p90, p95, p99)
+        - gauges: Point-in-time values (connection status, etc.)
+    """
+    metrics = get_metrics()
+    return metrics.get_all_metrics()
 
 
 # =============================================================================

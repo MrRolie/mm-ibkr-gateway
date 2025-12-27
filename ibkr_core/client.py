@@ -16,6 +16,8 @@ from typing import List, Optional
 from ib_insync import IB
 
 from ibkr_core.config import Config, get_config
+from ibkr_core.logging_config import get_correlation_id, log_with_context
+from ibkr_core.metrics import record_ibkr_operation, set_connection_status
 
 logger = logging.getLogger(__name__)
 
@@ -134,12 +136,24 @@ class IBKRClient:
             logger.debug("Already connected to IBKR")
             return
 
-        logger.info(
-            f"Connecting to IBKR Gateway at {self._host}:{self._port} "
-            f"(mode={self._mode.upper()}, clientId={self._client_id})"
+        log_with_context(
+            logger,
+            logging.INFO,
+            "Connecting to IBKR Gateway",
+            operation="connect",
+            host=self._host,
+            port=self._port,
+            mode=self._mode.upper(),
+            client_id=self._client_id,
+            timeout=timeout,
+            readonly=readonly,
         )
 
         try:
+            import time
+
+            start_time = time.time()
+
             self._ib.connect(
                 host=self._host,
                 port=self._port,
@@ -156,26 +170,73 @@ class IBKRClient:
 
             # Log success with account info
             accounts = self._ib.managedAccounts()
-            logger.info(
-                f"Connected to IBKR Gateway successfully. "
-                f"Accounts: {accounts if accounts else 'none'}"
+            server_time = self._ib.reqCurrentTime()
+
+            elapsed_ms = (time.time() - start_time) * 1000
+
+            log_with_context(
+                logger,
+                logging.INFO,
+                "Connected to IBKR Gateway successfully",
+                operation="connect",
+                status="success",
+                accounts=accounts if accounts else [],
+                server_time=str(server_time),
+                elapsed_ms=round(elapsed_ms, 2),
             )
 
-            # Get and log server time for verification
-            server_time = self._ib.reqCurrentTime()
-            logger.info(f"IBKR Server time: {server_time}")
+            # Record metrics
+            elapsed_seconds = elapsed_ms / 1000
+            record_ibkr_operation("connect", "success", elapsed_seconds)
+            set_connection_status(self._mode, connected=True)
 
         except ConnectionRefusedError as e:
             msg = f"Connection refused at {self._host}:{self._port}. Is IBKR Gateway/TWS running?"
-            logger.error(msg)
+            log_with_context(
+                logger,
+                logging.ERROR,
+                "IBKR connection refused",
+                operation="connect",
+                status="error",
+                error_type="ConnectionRefusedError",
+                host=self._host,
+                port=self._port,
+            )
+            elapsed_seconds = time.time() - start_time
+            record_ibkr_operation("connect", "error", elapsed_seconds)
+            set_connection_status(self._mode, connected=False)
             raise ConnectionError(msg) from e
         except TimeoutError as e:
             msg = f"Connection timeout at {self._host}:{self._port}"
-            logger.error(msg)
+            log_with_context(
+                logger,
+                logging.ERROR,
+                "IBKR connection timeout",
+                operation="connect",
+                status="error",
+                error_type="TimeoutError",
+                host=self._host,
+                port=self._port,
+                timeout=timeout,
+            )
+            elapsed_seconds = time.time() - start_time
+            record_ibkr_operation("connect", "timeout", elapsed_seconds)
+            set_connection_status(self._mode, connected=False)
             raise ConnectionError(msg) from e
         except Exception as e:
             msg = f"Failed to connect to IBKR: {type(e).__name__}: {e}"
-            logger.error(msg)
+            log_with_context(
+                logger,
+                logging.ERROR,
+                "IBKR connection failed",
+                operation="connect",
+                status="error",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            elapsed_seconds = time.time() - start_time
+            record_ibkr_operation("connect", "error", elapsed_seconds)
+            set_connection_status(self._mode, connected=False)
             raise ConnectionError(msg) from e
 
     def disconnect(self) -> None:
@@ -185,9 +246,23 @@ class IBKRClient:
         Safe to call even if not connected.
         """
         if self._ib.isConnected():
-            logger.info("Disconnecting from IBKR Gateway")
+            log_with_context(
+                logger,
+                logging.INFO,
+                "Disconnecting from IBKR Gateway",
+                operation="disconnect",
+            )
             self._ib.disconnect()
-            logger.info("Disconnected from IBKR Gateway")
+            log_with_context(
+                logger,
+                logging.INFO,
+                "Disconnected from IBKR Gateway",
+                operation="disconnect",
+                status="success",
+            )
+
+            # Record disconnection metric
+            set_connection_status(self._mode, connected=False)
 
         self._connected = False
         self._connection_time = None

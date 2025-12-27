@@ -2,6 +2,7 @@
 .claude/
 .vscode/
 .benchmarks/
+data/
 
 
 # Byte-compiled / optimized / DLL files
