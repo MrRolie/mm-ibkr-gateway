@@ -2,15 +2,15 @@
 Tests for CLI module.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from typer.testing import CliRunner
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+from typer.testing import CliRunner
 
 from ibkr_core.cli import app
 from ibkr_core.client import ConnectionError
 from ibkr_core.config import InvalidConfigError
-
 
 # Test runner
 runner = CliRunner()

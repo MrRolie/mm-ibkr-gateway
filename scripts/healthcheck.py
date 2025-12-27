@@ -23,24 +23,24 @@ from ibkr_core.config import InvalidConfigError, get_config
 
 def healthcheck(mode: Optional[str] = None) -> bool:
     """Check IBKR connection and server time.
-    
+
     Args:
-        mode: Optional trading mode override ('paper' or 'live'). 
+        mode: Optional trading mode override ('paper' or 'live').
               If not provided, uses TRADING_MODE from config.
     """
-    
+
     try:
         from ib_insync import IB
     except ImportError:
         print("ERROR: ib_insync is not installed. Please install it via pip/poetry.")
         return False
-    
+
     try:
         config = get_config()
     except InvalidConfigError as e:
         print(f"ERROR: Configuration error - {e}")
         return False
-    
+
     # Override trading mode if specified
     if mode is not None:
         if mode.lower() not in ("paper", "live"):
@@ -49,7 +49,7 @@ def healthcheck(mode: Optional[str] = None) -> bool:
         trading_mode = mode.lower()
     else:
         trading_mode = config.trading_mode
-    
+
     # Select appropriate port and client ID based on mode
     if trading_mode == "live":
         gateway_port = config.live_gateway_port
@@ -57,44 +57,46 @@ def healthcheck(mode: Optional[str] = None) -> bool:
     else:
         gateway_port = config.paper_gateway_port
         client_id = config.paper_client_id
-    
+
     ib = IB()
-    
+
     try:
         # Attempt connection
-        print(f"Connecting to IBKR Gateway at {config.ibkr_gateway_host}:{gateway_port} ({trading_mode.upper()} mode)...")
+        print(
+            f"Connecting to IBKR Gateway at {config.ibkr_gateway_host}:{gateway_port} ({trading_mode.upper()} mode)..."
+        )
         print(f"Using client ID: {client_id}")
-        
+
         ib.connect(
             host=config.ibkr_gateway_host,
             port=gateway_port,
             clientId=client_id,
             timeout=10,
         )
-        
+
         if not ib.isConnected():
             print("ERROR: Failed to connect to IBKR Gateway.")
             return False
-        
+
         print("[OK] Connected to IBKR Gateway")
-        
+
         # Query server time
         server_time = ib.reqCurrentTime()
         print(f"[OK] Server time: {server_time}")
-        
+
         # Get managed accounts
         accounts = ib.managedAccounts()
         if accounts:
             print(f"[OK] Managed accounts: {', '.join(accounts)}")
         else:
             print("[OK] No managed accounts (this is normal for some configurations)")
-        
+
         # Verify trading mode
         print(f"[OK] Trading mode: {trading_mode.upper()}")
         print(f"[OK] Orders enabled: {config.orders_enabled}")
-        
+
         return True
-        
+
     except ConnectionRefusedError:
         print(f"ERROR: Connection refused. Is IBKR Gateway/TWS running on port {gateway_port}?")
         return False
@@ -104,6 +106,7 @@ def healthcheck(mode: Optional[str] = None) -> bool:
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return False
     finally:
@@ -115,16 +118,16 @@ def healthcheck(mode: Optional[str] = None) -> bool:
 def main() -> int:
     """Main entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="IBKR Gateway healthcheck")
     parser.add_argument(
         "mode",
         nargs="?",
         choices=["paper", "live"],
-        help="Trading mode to test (paper or live). If not specified, uses TRADING_MODE from .env"
+        help="Trading mode to test (paper or live). If not specified, uses TRADING_MODE from .env",
     )
     args = parser.parse_args()
-    
+
     try:
         success = healthcheck(mode=args.mode)
         return 0 if success else 1
@@ -134,6 +137,7 @@ def main() -> int:
     except Exception as e:
         print(f"FATAL ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

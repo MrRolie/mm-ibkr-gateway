@@ -6,10 +6,10 @@ both with and without IBKR connection.
 """
 
 import os
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ibkr_core.client import ConnectionError as IBKRConnectionError
@@ -23,6 +23,7 @@ def reset_env():
     os.environ.pop("API_KEY", None)
 
     from ibkr_core.config import reset_config
+
     reset_config()
     yield
     reset_config()
@@ -32,14 +33,15 @@ def reset_env():
 def client():
     """Create a test client for the API."""
     from api.server import app
+
     return TestClient(app)
 
 
 @pytest.fixture
 def client_disconnected():
     """Create a test client with mocked IBKR client manager as disconnected."""
-    from api.server import app
     from api.dependencies import get_client_manager
+    from api.server import app
 
     # Create mock client manager
     mock_manager = MagicMock()
@@ -112,9 +114,11 @@ class TestHealthNoAuth:
         """Health check should work without API key even when auth is enabled."""
         os.environ["API_KEY"] = "test-secret-key"
         from ibkr_core.config import reset_config
+
         reset_config()
 
         from api.server import app
+
         test_client = TestClient(app)
 
         # Note: No X-API-Key header

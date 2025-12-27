@@ -25,6 +25,7 @@ def reset_env():
     os.environ.pop("API_KEY", None)
 
     from ibkr_core.config import reset_config
+
     reset_config()
     yield
     reset_config()
@@ -34,14 +35,15 @@ def reset_env():
 def client():
     """Create a test client for the API."""
     from api.server import app
+
     return TestClient(app)
 
 
 @pytest.fixture
 def client_disconnected():
     """Create a test client with mocked IBKR client manager as disconnected."""
-    from api.server import app
     from api.dependencies import get_client_manager
+    from api.server import app
 
     # Create mock client manager
     mock_manager = MagicMock()
@@ -138,9 +140,11 @@ class TestAccountAuth:
         """Account endpoints should require API key when API_KEY is set."""
         os.environ["API_KEY"] = "test-secret-key"
         from ibkr_core.config import reset_config
+
         reset_config()
 
         from api.server import app
+
         test_client = TestClient(app)
 
         response = test_client.get("/account/summary")
@@ -155,10 +159,11 @@ class TestAccountAuth:
         """Account endpoint should accept valid API key."""
         os.environ["API_KEY"] = "test-secret-key"
         from ibkr_core.config import reset_config
+
         reset_config()
 
-        from api.server import app
         from api.dependencies import get_client_manager
+        from api.server import app
 
         # Create mock client manager
         mock_manager = MagicMock()
@@ -207,9 +212,11 @@ class TestAccountIntegration:
         os.environ.pop("API_KEY", None)
 
         from ibkr_core.config import reset_config
+
         reset_config()
 
         from api.server import app
+
         return TestClient(app)
 
     def test_account_summary_integration(self, integration_client):

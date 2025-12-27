@@ -71,9 +71,7 @@ def translate_http_error(response: httpx.Response) -> MCPToolError:
         details = body.get("details")
     except Exception:
         # Fallback to generic error based on status code
-        code_info = HTTP_STATUS_TO_ERROR.get(
-            status, ("INTERNAL_ERROR", f"HTTP {status} error")
-        )
+        code_info = HTTP_STATUS_TO_ERROR.get(status, ("INTERNAL_ERROR", f"HTTP {status} error"))
         error_code, message = code_info
         details = None
 

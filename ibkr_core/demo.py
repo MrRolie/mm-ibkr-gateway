@@ -10,19 +10,19 @@ Usage:
 """
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
-from ibkr_core.client import IBKRClient, create_client, ConnectionError
-from ibkr_core.config import get_config, InvalidConfigError
-from ibkr_core.models import SymbolSpec
+from ibkr_core.account import AccountError, get_account_summary, get_positions
+from ibkr_core.client import ConnectionError, IBKRClient, create_client
+from ibkr_core.config import InvalidConfigError, get_config
 from ibkr_core.market_data import (
-    get_quote,
-    get_historical_bars,
     MarketDataError,
     MarketDataPermissionError,
+    get_historical_bars,
+    get_quote,
 )
-from ibkr_core.account import get_account_summary, get_positions, AccountError
+from ibkr_core.models import SymbolSpec
 
 
 # ANSI color codes for terminal output
@@ -158,12 +158,7 @@ def demo_market_data(client: IBKRClient) -> bool:
     print_section("1. Real-Time Quote: AAPL (Stock)")
 
     try:
-        aapl_spec = SymbolSpec(
-            symbol="AAPL",
-            securityType="STK",
-            exchange="SMART",
-            currency="USD"
-        )
+        aapl_spec = SymbolSpec(symbol="AAPL", securityType="STK", exchange="SMART", currency="USD")
 
         print_info("Fetching", "AAPL real-time quote...")
         quote = get_quote(aapl_spec, client)
@@ -195,20 +190,10 @@ def demo_market_data(client: IBKRClient) -> bool:
     print_section("2. Historical Bars: SPY (ETF) - Last 5 Days")
 
     try:
-        spy_spec = SymbolSpec(
-            symbol="SPY",
-            securityType="ETF",
-            exchange="SMART",
-            currency="USD"
-        )
+        spy_spec = SymbolSpec(symbol="SPY", securityType="ETF", exchange="SMART", currency="USD")
 
         print_info("Fetching", "SPY historical bars (1-hour bars, 5 days)...")
-        bars = get_historical_bars(
-            spy_spec,
-            client,
-            bar_size="1 hour",
-            duration="5 D"
-        )
+        bars = get_historical_bars(spy_spec, client, bar_size="1 hour", duration="5 D")
 
         print_success(f"Retrieved {len(bars)} bars")
         print()
@@ -217,10 +202,12 @@ def demo_market_data(client: IBKRClient) -> bool:
 
         # Show last 5 bars
         for bar in bars[-5:]:
-            print(f"    {bar.time.strftime('%Y-%m-%d %H:%M')} | "
-                  f"O: ${bar.open:7.2f} | H: ${bar.high:7.2f} | "
-                  f"L: ${bar.low:7.2f} | C: ${bar.close:7.2f} | "
-                  f"V: {bar.volume:>10,}")
+            print(
+                f"    {bar.time.strftime('%Y-%m-%d %H:%M')} | "
+                f"O: ${bar.open:7.2f} | H: ${bar.high:7.2f} | "
+                f"L: ${bar.low:7.2f} | C: ${bar.close:7.2f} | "
+                f"V: {bar.volume:>10,}"
+            )
 
     except MarketDataError as e:
         print_error(f"Market data error: {e}")
@@ -280,8 +267,14 @@ def demo_account_status(client: IBKRClient) -> bool:
         if not positions:
             print_warning("No open positions")
             print()
-            print(f"  {Colors.BOLD}Note:{Colors.END} To see positions, place some trades in your paper account first.")
-            print(f"  {Colors.BOLD}Tip:{Colors.END} You can use the notebooks in the 'notebooks/' directory to place test trades.")
+            print(
+                f"  {Colors.BOLD}Note:{Colors.END} To see positions, place some "
+                f"trades in your paper account first."
+            )
+            print(
+                f"  {Colors.BOLD}Tip:{Colors.END} You can use the notebooks in the "
+                f"'notebooks/' directory to place test trades."
+            )
         else:
             print_success(f"Found {len(positions)} position(s)")
             print()
@@ -337,7 +330,7 @@ def print_summary() -> None:
     print("     • .context/SAFETY_CHECKLIST.md - Live trading safety")
     print()
     print(f"{Colors.YELLOW}⚠  Remember: This demo uses PAPER TRADING mode (simulated){Colors.END}")
-    print(f"   For live trading, see .context/SAFETY_CHECKLIST.md")
+    print("   For live trading, see .context/SAFETY_CHECKLIST.md")
     print()
 
 
@@ -400,7 +393,7 @@ def main() -> int:
         if client:
             try:
                 client.disconnect()
-            except:
+            except Exception:
                 pass
 
 

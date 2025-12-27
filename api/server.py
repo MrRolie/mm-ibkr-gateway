@@ -433,9 +433,7 @@ async def preview_order(
     from ibkr_core.orders import preview_order as ibkr_preview
 
     symbol = request.instrument.symbol
-    logger.info(
-        f"[{ctx.request_id}] Order preview: {request.side} {request.quantity} {symbol}"
-    )
+    logger.info(f"[{ctx.request_id}] Order preview: {request.side} {request.quantity} {symbol}")
 
     def _preview(client):
         order_spec = request.to_order_spec()

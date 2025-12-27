@@ -51,9 +51,12 @@ def reset_config_and_cache():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -403,9 +406,9 @@ class TestGetQuoteMocked:
 
         # Mock ticker with no data (nan values as ib_insync uses)
         mock_ticker = MagicMock()
-        mock_ticker.bid = float('nan')
-        mock_ticker.ask = float('nan')
-        mock_ticker.last = float('nan')
+        mock_ticker.bid = float("nan")
+        mock_ticker.ask = float("nan")
+        mock_ticker.last = float("nan")
 
         # Setup error event (no errors will fire)
         self._setup_mock_error_event(mock_client)
@@ -430,9 +433,9 @@ class TestGetQuoteMocked:
         mock_contract.conId = 265598
 
         mock_ticker = MagicMock()
-        mock_ticker.bid = float('nan')
-        mock_ticker.ask = float('nan')
-        mock_ticker.last = float('nan')
+        mock_ticker.bid = float("nan")
+        mock_ticker.ask = float("nan")
+        mock_ticker.last = float("nan")
 
         # Setup mock error event
         mock_error_event = MockErrorEvent()
@@ -443,7 +446,9 @@ class TestGetQuoteMocked:
         def mock_sleep(duration):
             if mock_error_event.handlers:
                 # Fire the permission error
-                mock_error_event.handlers[0](1, 10089, "not subscribed to market data", mock_contract)
+                mock_error_event.handlers[0](
+                    1, 10089, "not subscribed to market data", mock_contract
+                )
 
         mock_client.ib.sleep = mock_sleep
         mock_client.ib.cancelMktData = MagicMock()
@@ -565,11 +570,12 @@ class TestGetHistoricalBarsMocked:
 
         with patch("ibkr_core.market_data.resolve_contract", return_value=mock_contract):
             bars = get_historical_bars(
-                spec, mock_client,
+                spec,
+                mock_client,
                 bar_size="1d",
                 duration="5d",
                 what_to_show="TRADES",
-                timeout_s=5.0
+                timeout_s=5.0,
             )
 
         assert len(bars) == 5
@@ -597,7 +603,8 @@ class TestGetHistoricalBarsMocked:
         with patch("ibkr_core.market_data.resolve_contract", return_value=mock_contract):
             with pytest.raises(NoMarketDataError, match="No historical data"):
                 get_historical_bars(
-                    spec, mock_client,
+                    spec,
+                    mock_client,
                     bar_size="1d",
                     duration="5d",
                 )
@@ -609,7 +616,8 @@ class TestGetHistoricalBarsMocked:
 
         with pytest.raises(ValueError, match="Invalid bar_size"):
             get_historical_bars(
-                spec, mock_client,
+                spec,
+                mock_client,
                 bar_size="invalid",
                 duration="5d",
             )
@@ -621,7 +629,8 @@ class TestGetHistoricalBarsMocked:
 
         with pytest.raises(ValueError, match="Invalid duration"):
             get_historical_bars(
-                spec, mock_client,
+                spec,
+                mock_client,
                 bar_size="1d",
                 duration="invalid",
             )
@@ -633,7 +642,8 @@ class TestGetHistoricalBarsMocked:
 
         with pytest.raises(ValueError, match="Invalid what_to_show"):
             get_historical_bars(
-                spec, mock_client,
+                spec,
+                mock_client,
                 bar_size="1d",
                 duration="5d",
                 what_to_show="INVALID",
@@ -671,8 +681,8 @@ class TestErrorHandling:
 from ibkr_core.market_data import (
     QuoteMode,
     StreamingQuote,
-    get_streaming_quote,
     get_quote_with_mode,
+    get_streaming_quote,
 )
 
 
@@ -845,9 +855,9 @@ class TestStreamingQuoteMocked:
 
         # Ticker with no data
         mock_ticker = MagicMock()
-        mock_ticker.bid = float('nan')
-        mock_ticker.ask = float('nan')
-        mock_ticker.last = float('nan')
+        mock_ticker.bid = float("nan")
+        mock_ticker.ask = float("nan")
+        mock_ticker.last = float("nan")
 
         self._setup_mock_error_event(mock_client)
         mock_client.ib.reqMktData.return_value = mock_ticker
@@ -974,6 +984,7 @@ class TestMarketDataIntegration:
     def client(self):
         """Create and connect client for tests."""
         import random
+
         client_id = random.randint(3000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         client.connect(timeout=10)
@@ -1062,7 +1073,8 @@ class TestMarketDataIntegration:
 
         try:
             bars = get_historical_bars(
-                spec, client,
+                spec,
+                client,
                 bar_size="1d",
                 duration="5d",
                 what_to_show="TRADES",
@@ -1086,7 +1098,9 @@ class TestMarketDataIntegration:
 
             print(f"Retrieved {len(bars)} bars for AAPL")
             for bar in bars[:3]:  # Print first 3
-                print(f"  {bar.time}: O={bar.open}, H={bar.high}, L={bar.low}, C={bar.close}, V={bar.volume}")
+                print(
+                    f"  {bar.time}: O={bar.open}, H={bar.high}, L={bar.low}, C={bar.close}, V={bar.volume}"
+                )
 
         except MarketDataPermissionError as e:
             pytest.skip(f"Skipped due to permissions: {e}")
@@ -1099,7 +1113,8 @@ class TestMarketDataIntegration:
 
         try:
             bars = get_historical_bars(
-                spec, client,
+                spec,
+                client,
                 bar_size="5m",
                 duration="1d",
                 what_to_show="TRADES",
@@ -1123,7 +1138,8 @@ class TestMarketDataIntegration:
 
         try:
             bars = get_historical_bars(
-                spec, client,
+                spec,
+                client,
                 bar_size="1d",
                 duration="1w",
                 what_to_show="TRADES",
@@ -1145,7 +1161,8 @@ class TestMarketDataIntegration:
 
         try:
             bars = get_historical_bars(
-                spec, client,
+                spec,
+                client,
                 bar_size="1d",
                 duration="5d",
                 what_to_show="TRADES",
@@ -1238,6 +1255,7 @@ class TestMarketDataIntegration:
     def test_streaming_quote_duration_limit(self, client):
         """Test streaming quote with duration limit."""
         import time
+
         spec = SymbolSpec(symbol="AAPL", securityType="STK")
 
         try:
@@ -1320,4 +1338,3 @@ class TestMarketDataIntegration:
             pytest.skip(f"Skipped due to permissions: {e}")
         except MarketDataTimeoutError as e:
             pytest.skip(f"Skipped due to timeout: {e}")
-

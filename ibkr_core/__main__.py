@@ -14,13 +14,13 @@ Exit codes:
 import sys
 import warnings
 
+from scripts.healthcheck import main
+
 warnings.warn(
     "Using 'python -m ibkr_core' is deprecated. Use 'python scripts/healthcheck.py' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
-
-from scripts.healthcheck import main
 
 if __name__ == "__main__":
     sys.exit(main())

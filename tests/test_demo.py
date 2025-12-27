@@ -2,28 +2,23 @@
 Tests for demo module.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, Mock, patch
 
-from ibkr_core.demo import (
-    validate_paper_mode,
-    check_gateway_connection,
-    demo_market_data,
-    demo_account_status,
-    main,
-)
-from ibkr_core.config import InvalidConfigError
-from ibkr_core.client import ConnectionError
-from ibkr_core.market_data import MarketDataError, MarketDataPermissionError
+import pytest
+
 from ibkr_core.account import AccountError
-from ibkr_core.models import (
-    Quote,
-    Bar,
-    AccountSummary,
-    Position,
+from ibkr_core.client import ConnectionError
+from ibkr_core.config import InvalidConfigError
+from ibkr_core.demo import (
+    check_gateway_connection,
+    demo_account_status,
+    demo_market_data,
+    main,
+    validate_paper_mode,
 )
-
+from ibkr_core.market_data import MarketDataError, MarketDataPermissionError
+from ibkr_core.models import AccountSummary, Bar, Position, Quote
 
 # =============================================================================
 # Unit Tests

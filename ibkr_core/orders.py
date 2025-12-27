@@ -42,31 +42,37 @@ logger = logging.getLogger(__name__)
 
 class OrderError(Exception):
     """Base exception for order-related errors."""
+
     pass
 
 
 class OrderValidationError(OrderError):
     """Raised when order specification is invalid."""
+
     pass
 
 
 class OrderPlacementError(OrderError):
     """Raised when order placement fails."""
+
     pass
 
 
 class OrderCancelError(OrderError):
     """Raised when order cancellation fails."""
+
     pass
 
 
 class OrderNotFoundError(OrderError):
     """Raised when order cannot be found."""
+
     pass
 
 
 class OrderPreviewError(OrderError):
     """Raised when order preview fails."""
+
     pass
 
 
@@ -119,7 +125,10 @@ class OrderRegistry:
         }
         self._trades[order_id] = trade
 
-        logger.debug(f"Registered order {order_id}: {symbol} {trade.order.action} {trade.order.totalQuantity}")
+        logger.debug(
+            f"Registered order {order_id}: {symbol} {trade.order.action} "
+            f"{trade.order.totalQuantity}"
+        )
         return order_id
 
     def lookup(self, order_id: str) -> Optional[Trade]:
@@ -241,16 +250,23 @@ def validate_order_spec(order_spec: OrderSpec) -> List[str]:
         if not has_amount and not has_percent:
             errors.append("Trailing stop orders (TRAIL) require trailingAmount OR trailingPercent")
         elif has_amount and has_percent:
-            errors.append("Trailing stop orders (TRAIL) cannot have both trailingAmount AND trailingPercent")
+            errors.append(
+                "Trailing stop orders (TRAIL) cannot have both trailingAmount AND trailingPercent"
+            )
 
     # TRAIL_LIMIT orders require trailing params + limit offset
     if order_type == "TRAIL_LIMIT":
         has_amount = order_spec.trailingAmount is not None
         has_percent = order_spec.trailingPercent is not None
         if not has_amount and not has_percent:
-            errors.append("Trailing stop-limit orders (TRAIL_LIMIT) require trailingAmount OR trailingPercent")
+            errors.append(
+                "Trailing stop-limit orders (TRAIL_LIMIT) require trailingAmount OR trailingPercent"
+            )
         elif has_amount and has_percent:
-            errors.append("Trailing stop-limit orders (TRAIL_LIMIT) cannot have both trailingAmount AND trailingPercent")
+            errors.append(
+                "Trailing stop-limit orders (TRAIL_LIMIT) cannot have both "
+                "trailingAmount AND trailingPercent"
+            )
         # Note: limitPrice is the offset from the stop for TRAIL_LIMIT in IB
 
     # BRACKET orders require take profit and stop loss prices
@@ -276,15 +292,21 @@ def validate_order_spec(order_spec: OrderSpec) -> List[str]:
             if side == "BUY":
                 # For buy: entry < take_profit and stop_loss < entry
                 if order_spec.takeProfitPrice <= order_spec.limitPrice:
-                    errors.append("For BUY bracket: take profit price must be greater than entry price")
+                    errors.append(
+                        "For BUY bracket: take profit price must be greater than entry price"
+                    )
                 if order_spec.stopLossPrice >= order_spec.limitPrice:
                     errors.append("For BUY bracket: stop loss price must be less than entry price")
             else:  # SELL
                 # For sell (short): entry > take_profit and stop_loss > entry
                 if order_spec.takeProfitPrice >= order_spec.limitPrice:
-                    errors.append("For SELL bracket: take profit price must be less than entry price")
+                    errors.append(
+                        "For SELL bracket: take profit price must be less than entry price"
+                    )
                 if order_spec.stopLossPrice <= order_spec.limitPrice:
-                    errors.append("For SELL bracket: stop loss price must be greater than entry price")
+                    errors.append(
+                        "For SELL bracket: stop loss price must be greater than entry price"
+                    )
 
     # MOC/OPG orders - no special price requirements, but TIF is set automatically
     if order_type in ("MOC", "OPG"):
@@ -326,9 +348,7 @@ def check_safety_guards(
             )
 
     if max_quantity is not None and order_spec.quantity > max_quantity:
-        warnings.append(
-            f"Quantity {order_spec.quantity} exceeds max {max_quantity}"
-        )
+        warnings.append(f"Quantity {order_spec.quantity} exceeds max {max_quantity}")
 
     return warnings
 
@@ -504,7 +524,9 @@ def _build_bracket_orders(order_spec: OrderSpec) -> List[Order]:
     quantity = order_spec.quantity
 
     # Generate OCA group name
-    oca_group = order_spec.ocaGroup or f"bracket_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    oca_group = (
+        order_spec.ocaGroup or f"bracket_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    )
 
     # 1. Entry order (limit)
     entry_order = LimitOrder(
@@ -609,12 +631,12 @@ def _trade_to_order_status(trade: Trade, order_id: str) -> OrderStatus:
     warnings = []
     if trade.log:
         for log_entry in trade.log[-5:]:  # Last 5 log entries
-            if hasattr(log_entry, 'message') and log_entry.message:
+            if hasattr(log_entry, "message") and log_entry.message:
                 warnings.append(log_entry.message)
 
     # Convert clientId to string if present
     client_order_id = None
-    if hasattr(order, 'clientId') and order.clientId is not None:
+    if hasattr(order, "clientId") and order.clientId is not None:
         client_order_id = str(order.clientId)
 
     return OrderStatus(
@@ -660,7 +682,9 @@ def preview_order(
         OrderValidationError: If order_spec is invalid.
         OrderPreviewError: If preview fails.
     """
-    logger.info(f"Previewing order: {order_spec.side} {order_spec.quantity} {order_spec.instrument.symbol}")
+    logger.info(
+        f"Previewing order: {order_spec.side} {order_spec.quantity} {order_spec.instrument.symbol}"
+    )
 
     # Validate order spec
     validation_errors = validate_order_spec(order_spec)
@@ -678,7 +702,7 @@ def preview_order(
 
         # Get multiplier for futures
         multiplier = 1.0
-        if hasattr(contract, 'multiplier') and contract.multiplier:
+        if hasattr(contract, "multiplier") and contract.multiplier:
             try:
                 multiplier = float(contract.multiplier)
             except (ValueError, TypeError):
@@ -766,45 +790,63 @@ def preview_order(
             opposite_side = _get_opposite_side(side)
 
             # Entry leg
-            entry_notional = order_spec.quantity * order_spec.limitPrice * multiplier if order_spec.limitPrice else None
-            legs.append(OrderLeg(
-                role="entry",
-                orderType="LMT",
-                side=side,
-                quantity=order_spec.quantity,
-                limitPrice=order_spec.limitPrice,
-                tif=order_spec.tif,
-                estimatedPrice=order_spec.limitPrice,
-                estimatedNotional=entry_notional,
-            ))
+            entry_notional = (
+                order_spec.quantity * order_spec.limitPrice * multiplier
+                if order_spec.limitPrice
+                else None
+            )
+            legs.append(
+                OrderLeg(
+                    role="entry",
+                    orderType="LMT",
+                    side=side,
+                    quantity=order_spec.quantity,
+                    limitPrice=order_spec.limitPrice,
+                    tif=order_spec.tif,
+                    estimatedPrice=order_spec.limitPrice,
+                    estimatedNotional=entry_notional,
+                )
+            )
 
             # Take profit leg
-            tp_notional = order_spec.quantity * order_spec.takeProfitPrice * multiplier if order_spec.takeProfitPrice else None
-            legs.append(OrderLeg(
-                role="take_profit",
-                orderType="LMT",
-                side=opposite_side,
-                quantity=order_spec.quantity,
-                limitPrice=order_spec.takeProfitPrice,
-                tif="GTC",
-                estimatedPrice=order_spec.takeProfitPrice,
-                estimatedNotional=tp_notional,
-            ))
+            tp_notional = (
+                order_spec.quantity * order_spec.takeProfitPrice * multiplier
+                if order_spec.takeProfitPrice
+                else None
+            )
+            legs.append(
+                OrderLeg(
+                    role="take_profit",
+                    orderType="LMT",
+                    side=opposite_side,
+                    quantity=order_spec.quantity,
+                    limitPrice=order_spec.takeProfitPrice,
+                    tif="GTC",
+                    estimatedPrice=order_spec.takeProfitPrice,
+                    estimatedNotional=tp_notional,
+                )
+            )
 
             # Stop loss leg
             sl_type = "STP_LMT" if order_spec.stopLossLimitPrice else "STP"
-            sl_notional = order_spec.quantity * order_spec.stopLossPrice * multiplier if order_spec.stopLossPrice else None
-            legs.append(OrderLeg(
-                role="stop_loss",
-                orderType=sl_type,
-                side=opposite_side,
-                quantity=order_spec.quantity,
-                stopPrice=order_spec.stopLossPrice,
-                limitPrice=order_spec.stopLossLimitPrice,
-                tif="GTC",
-                estimatedPrice=order_spec.stopLossPrice,
-                estimatedNotional=sl_notional,
-            ))
+            sl_notional = (
+                order_spec.quantity * order_spec.stopLossPrice * multiplier
+                if order_spec.stopLossPrice
+                else None
+            )
+            legs.append(
+                OrderLeg(
+                    role="stop_loss",
+                    orderType=sl_type,
+                    side=opposite_side,
+                    quantity=order_spec.quantity,
+                    stopPrice=order_spec.stopLossPrice,
+                    limitPrice=order_spec.stopLossLimitPrice,
+                    tif="GTC",
+                    estimatedPrice=order_spec.stopLossPrice,
+                    estimatedNotional=sl_notional,
+                )
+            )
 
             # Total notional is worst case (entry notional)
             total_notional = entry_notional
@@ -957,9 +999,7 @@ def place_order(
         else:
             result_status = "ACCEPTED"
 
-        logger.info(
-            f"Order placed: order_id={order_id}, status={order_status.status}"
-        )
+        logger.info(f"Order placed: order_id={order_id}, status={order_status.status}")
 
         return OrderResult(
             orderId=order_id,
@@ -1014,7 +1054,10 @@ def _place_bracket_order(
         sl_order.account = order_spec.accountId
 
     # Place entry order first
-    logger.info(f"Placing entry order: {entry_order.action} {entry_order.totalQuantity} @ LMT {entry_order.lmtPrice}")
+    logger.info(
+        f"Placing entry order: {entry_order.action} {entry_order.totalQuantity} @ "
+        f"LMT {entry_order.lmtPrice}"
+    )
     entry_trade = client.ib.placeOrder(contract, entry_order)
 
     # Brief wait to get the orderId
@@ -1032,12 +1075,17 @@ def _place_bracket_order(
     sl_order.parentId = parent_id
 
     # Place take profit order
-    logger.info(f"Placing take profit order: {tp_order.action} {tp_order.totalQuantity} @ LMT {tp_order.lmtPrice}")
+    logger.info(
+        f"Placing take profit order: {tp_order.action} {tp_order.totalQuantity} @ "
+        f"LMT {tp_order.lmtPrice}"
+    )
     tp_trade = client.ib.placeOrder(contract, tp_order)
 
     # Place stop loss order
-    sl_price = sl_order.stopPrice if hasattr(sl_order, 'stopPrice') else sl_order.auxPrice
-    logger.info(f"Placing stop loss order: {sl_order.action} {sl_order.totalQuantity} @ STP {sl_price}")
+    sl_price = sl_order.stopPrice if hasattr(sl_order, "stopPrice") else sl_order.auxPrice
+    logger.info(
+        f"Placing stop loss order: {sl_order.action} {sl_order.totalQuantity} @ STP {sl_price}"
+    )
     sl_trade = client.ib.placeOrder(contract, sl_order)
 
     # Wait for status updates
@@ -1252,16 +1300,20 @@ def get_open_orders(client: IBKRClient) -> List[Dict]:
         perm_id = str(trade.order.permId) if trade.order.permId else None
         order_id = perm_id or f"ord_{trade.order.orderId}"
 
-        orders.append({
-            "order_id": order_id,
-            "symbol": trade.contract.symbol if trade.contract else "Unknown",
-            "side": trade.order.action,
-            "quantity": trade.order.totalQuantity,
-            "order_type": trade.order.orderType,
-            "status": trade.orderStatus.status if trade.orderStatus else "Unknown",
-            "filled": trade.orderStatus.filled if trade.orderStatus else 0,
-            "remaining": trade.orderStatus.remaining if trade.orderStatus else trade.order.totalQuantity,
-        })
+        orders.append(
+            {
+                "order_id": order_id,
+                "symbol": trade.contract.symbol if trade.contract else "Unknown",
+                "side": trade.order.action,
+                "quantity": trade.order.totalQuantity,
+                "order_type": trade.order.orderType,
+                "status": trade.orderStatus.status if trade.orderStatus else "Unknown",
+                "filled": trade.orderStatus.filled if trade.orderStatus else 0,
+                "remaining": trade.orderStatus.remaining
+                if trade.orderStatus
+                else trade.order.totalQuantity,
+            }
+        )
 
     return orders
 
@@ -1319,11 +1371,13 @@ def cancel_order_set(
 
         except OrderCancelError as e:
             logger.warning(f"Cancel failed for {order_id}: {e}")
-            results.append(CancelResult(
-                orderId=order_id,
-                status="REJECTED",
-                message=str(e),
-            ))
+            results.append(
+                CancelResult(
+                    orderId=order_id,
+                    status="REJECTED",
+                    message=str(e),
+                )
+            )
             any_rejected = True
             all_not_found = False
 

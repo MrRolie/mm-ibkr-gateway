@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class ConnectionError(Exception):
     """Raised when connection to IBKR fails."""
+
     pass
 
 
@@ -237,9 +238,7 @@ class IBKRClient:
         try:
             return loop.run_until_complete(_get_time())
         except asyncio.TimeoutError as e:
-            raise ConnectionError(
-                f"Server time request timed out after {timeout_s}s"
-            ) from e
+            raise ConnectionError(f"Server time request timed out after {timeout_s}s") from e
 
     def __enter__(self) -> "IBKRClient":
         """Context manager entry - connect."""

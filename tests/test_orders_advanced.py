@@ -39,7 +39,6 @@ from ibkr_core.orders import (
     validate_order_spec,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -275,7 +274,7 @@ class TestBracketOrderValidation:
             orderType="BRACKET",
             limitPrice=195.00,
             takeProfitPrice=180.00,  # Below entry for short
-            stopLossPrice=205.00,    # Above entry for short
+            stopLossPrice=205.00,  # Above entry for short
         )
         errors = validate_order_spec(order)
         assert errors == []

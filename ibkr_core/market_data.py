@@ -26,8 +26,10 @@ from ibkr_core.models import Bar, Quote, SymbolSpec
 
 class QuoteMode(Enum):
     """Quote retrieval mode."""
-    SNAPSHOT = "snapshot"    # One-time request (US Securities Snapshot)
+
+    SNAPSHOT = "snapshot"  # One-time request (US Securities Snapshot)
     STREAMING = "streaming"  # Continuous updates (US Equity & Options Add-On Streaming)
+
 
 logger = logging.getLogger(__name__)
 
@@ -39,26 +41,31 @@ logger = logging.getLogger(__name__)
 
 class MarketDataError(Exception):
     """Base exception for market data errors."""
+
     pass
 
 
 class MarketDataPermissionError(MarketDataError):
     """Raised when market data permissions are insufficient."""
+
     pass
 
 
 class NoMarketDataError(MarketDataError):
     """Raised when no market data is available for the instrument."""
+
     pass
 
 
 class PacingViolationError(MarketDataError):
     """Raised when IBKR pacing limits are exceeded."""
+
     pass
 
 
 class MarketDataTimeoutError(MarketDataError):
     """Raised when market data request times out."""
+
     pass
 
 
@@ -517,9 +524,7 @@ def get_quotes(
         except ContractResolutionError:
             raise
         except Exception as e:
-            raise ContractResolutionError(
-                f"Failed to resolve {spec.symbol}: {e}"
-            ) from e
+            raise ContractResolutionError(f"Failed to resolve {spec.symbol}: {e}") from e
 
     # Track errors via error event
     errors_by_symbol: Dict[str, List[tuple]] = {s.symbol: [] for s in specs}
@@ -570,9 +575,7 @@ def get_quotes(
                     pending.discard(symbol)
 
         if pending:
-            logger.warning(
-                f"Timeout: {len(pending)} instruments did not receive data: {pending}"
-            )
+            logger.warning(f"Timeout: {len(pending)} instruments did not receive data: {pending}")
 
         # Build Quote objects in order
         now = datetime.now(timezone.utc)
@@ -660,16 +663,16 @@ def _ticker_to_quote(
 class StreamingQuote:
     """
     Streaming quote subscription for real-time market data.
-    
-    This class provides continuous real-time market data updates via the 
+
+    This class provides continuous real-time market data updates via the
     US Equity & Options Add-On Streaming subscription.
-    
+
     Usage:
         # Context manager pattern (recommended)
         with StreamingQuote(spec, client) as stream:
             for quote in stream.updates(max_updates=10):
                 print(f"Update: {quote.bid} / {quote.ask}")
-        
+
         # Manual control
         stream = StreamingQuote(spec, client)
         stream.start()
@@ -679,7 +682,7 @@ class StreamingQuote:
         finally:
             stream.stop()
     """
-    
+
     def __init__(
         self,
         spec: SymbolSpec,
@@ -689,7 +692,7 @@ class StreamingQuote:
     ):
         """
         Initialize streaming quote subscription.
-        
+
         Args:
             spec: Symbol specification for the instrument.
             client: Connected IBKRClient instance.
@@ -703,21 +706,21 @@ class StreamingQuote:
         self._is_active = False
         self._errors: List[tuple] = []
         self._on_error_handler: Optional[Callable] = None
-    
+
     @property
     def is_active(self) -> bool:
         """Check if streaming is active."""
         return self._is_active
-    
+
     @property
     def symbol(self) -> str:
         """Symbol being streamed."""
         return self._spec.symbol
-    
+
     def start(self) -> None:
         """
         Start streaming quotes.
-        
+
         Raises:
             ContractResolutionError: If contract cannot be resolved.
             MarketDataPermissionError: If market data permissions are insufficient.
@@ -726,47 +729,43 @@ class StreamingQuote:
         if self._is_active:
             logger.debug(f"Streaming already active for {self._spec.symbol}")
             return
-        
+
         self._client.ensure_connected()
-        
+
         logger.info(f"Starting streaming quotes for {self._spec.symbol}")
-        
+
         # Resolve contract
         try:
             self._contract = resolve_contract(self._spec, self._client)
         except ContractResolutionError:
             raise
         except Exception as e:
-            raise ContractResolutionError(
-                f"Failed to resolve {self._spec.symbol}: {e}"
-            ) from e
-        
+            raise ContractResolutionError(f"Failed to resolve {self._spec.symbol}: {e}") from e
+
         # Error handler
         self._errors = []
-        
+
         def on_error(reqId: int, errorCode: int, errorString: str, contract):
             self._errors.append((errorCode, errorString))
-        
+
         self._on_error_handler = on_error
         self._client.ib.errorEvent += on_error
-        
+
         # Request streaming market data (snapshot=False for streaming)
-        self._ticker = self._client.ib.reqMktData(
-            self._contract, "", snapshot=False
-        )
-        
+        self._ticker = self._client.ib.reqMktData(self._contract, "", snapshot=False)
+
         # Wait for initial data
         deadline = time.time() + self._timeout_s
         while time.time() < deadline:
             self._client.ib.sleep(POLL_INTERVAL_S)
-            
+
             # Check for errors
             for error_code, error_msg in self._errors:
                 exc = _check_ibkr_error_code(error_code, error_msg)
                 if exc:
                     self.stop()
                     raise exc
-            
+
             if _ticker_has_data(self._ticker):
                 logger.debug(
                     f"Streaming started for {self._spec.symbol}: "
@@ -774,7 +773,7 @@ class StreamingQuote:
                 )
                 self._is_active = True
                 return
-        
+
         # Timeout
         self.stop()
         if self._errors:
@@ -787,7 +786,7 @@ class StreamingQuote:
             raise MarketDataTimeoutError(
                 f"Timeout waiting for streaming data for {self._spec.symbol}"
             )
-    
+
     def stop(self) -> None:
         """Stop streaming quotes and clean up."""
         if self._on_error_handler:
@@ -796,24 +795,24 @@ class StreamingQuote:
             except Exception:
                 pass
             self._on_error_handler = None
-        
+
         if self._contract and self._client.is_connected:
             try:
                 self._client.ib.cancelMktData(self._contract)
             except Exception as e:
                 logger.warning(f"Error canceling market data: {e}")
-        
+
         self._is_active = False
         self._ticker = None
         logger.debug(f"Streaming stopped for {self._spec.symbol}")
-    
+
     def get_current(self) -> Quote:
         """
         Get the current quote snapshot from the stream.
-        
+
         Returns:
             Current Quote with latest data.
-        
+
         Raises:
             MarketDataError: If streaming is not active.
         """
@@ -821,17 +820,17 @@ class StreamingQuote:
             raise MarketDataError(
                 f"Streaming not active for {self._spec.symbol}. Call start() first."
             )
-        
+
         # Process any pending events
         self._client.ib.sleep(0)
-        
+
         return _ticker_to_quote(
             self._ticker,
             self._spec.symbol,
             self._contract.conId,
             source="IBKR_STREAMING",
         )
-    
+
     def updates(
         self,
         *,
@@ -841,15 +840,15 @@ class StreamingQuote:
     ) -> Generator[Quote, None, None]:
         """
         Yield quote updates as they arrive.
-        
+
         Args:
             max_updates: Maximum number of updates to yield (None = unlimited).
             duration_s: Maximum duration in seconds (None = unlimited).
             poll_interval_s: Polling interval for updates (default 0.1s).
-        
+
         Yields:
             Quote objects with updated data.
-        
+
         Note:
             At least one of max_updates or duration_s should be specified
             to avoid infinite iteration.
@@ -858,28 +857,28 @@ class StreamingQuote:
             raise MarketDataError(
                 f"Streaming not active for {self._spec.symbol}. Call start() first."
             )
-        
+
         count = 0
         start_time = time.time()
         last_quote: Optional[Quote] = None
-        
+
         while True:
             # Check limits
             if max_updates is not None and count >= max_updates:
                 break
             if duration_s is not None and (time.time() - start_time) >= duration_s:
                 break
-            
+
             # Process events
             self._client.ib.sleep(poll_interval_s)
-            
+
             # Check for new errors
             for error_code, error_msg in self._errors:
                 exc = _check_ibkr_error_code(error_code, error_msg)
                 if exc:
                     raise exc
             self._errors.clear()
-            
+
             # Get current quote
             quote = _ticker_to_quote(
                 self._ticker,
@@ -887,23 +886,23 @@ class StreamingQuote:
                 self._contract.conId,
                 source="IBKR_STREAMING",
             )
-            
+
             # Only yield if data changed (avoid duplicate quotes)
             if last_quote is None or (
-                quote.bid != last_quote.bid or
-                quote.ask != last_quote.ask or
-                quote.last != last_quote.last or
-                quote.volume != last_quote.volume
+                quote.bid != last_quote.bid
+                or quote.ask != last_quote.ask
+                or quote.last != last_quote.last
+                or quote.volume != last_quote.volume
             ):
                 yield quote
                 last_quote = quote
                 count += 1
-    
+
     def __enter__(self) -> "StreamingQuote":
         """Context manager entry."""
         self.start()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit."""
         self.stop()
@@ -917,18 +916,18 @@ def get_streaming_quote(
 ) -> StreamingQuote:
     """
     Create a streaming quote subscription.
-    
+
     This is a convenience factory function that returns a StreamingQuote
     object for real-time market data.
-    
+
     Args:
         spec: Symbol specification for the instrument.
         client: Connected IBKRClient instance.
         timeout_s: Timeout for initial data (default 10.0 seconds).
-    
+
     Returns:
         StreamingQuote instance (not yet started).
-    
+
     Example:
         stream = get_streaming_quote(spec, client)
         with stream:
@@ -947,19 +946,19 @@ def get_quote_with_mode(
 ) -> Quote:
     """
     Get a quote using specified mode (snapshot or streaming).
-    
+
     For snapshot mode: Returns immediately after receiving data.
     For streaming mode: Starts streaming, gets one quote, then stops.
-    
+
     Args:
         spec: Symbol specification for the instrument.
         client: Connected IBKRClient instance.
         mode: Quote mode (SNAPSHOT or STREAMING).
         timeout_s: Maximum time to wait for data.
-    
+
     Returns:
         Quote object with market data.
-    
+
     Raises:
         ContractResolutionError: If contract cannot be resolved.
         MarketDataPermissionError: If market data permissions are insufficient.
@@ -1070,6 +1069,7 @@ def get_historical_bars(
         # Convert to our Bar model
         result: List[Bar] = []
         from datetime import date as date_type
+
         for ib_bar in bars:
             # Parse bar time - ib_insync returns datetime or date objects
             # For daily bars, it's a date; for intraday, it's a datetime
@@ -1084,7 +1084,9 @@ def get_historical_bars(
                     bar_time = datetime.strptime(bar_time, "%Y%m%d %H:%M:%S")
             elif isinstance(bar_time, date_type) and not isinstance(bar_time, datetime):
                 # It's a date object (not datetime) - convert to datetime at midnight
-                bar_time = datetime(bar_time.year, bar_time.month, bar_time.day, tzinfo=timezone.utc)
+                bar_time = datetime(
+                    bar_time.year, bar_time.month, bar_time.day, tzinfo=timezone.utc
+                )
 
             # Ensure timezone-aware (for datetime objects)
             if isinstance(bar_time, datetime) and bar_time.tzinfo is None:
@@ -1107,8 +1109,7 @@ def get_historical_bars(
 
     except asyncio.TimeoutError:
         raise MarketDataTimeoutError(
-            f"Timeout waiting for historical data for {spec.symbol} "
-            f"after {timeout_s}s"
+            f"Timeout waiting for historical data for {spec.symbol} " f"after {timeout_s}s"
         )
     except Exception as e:
         # Check if error message indicates specific issue
@@ -1118,9 +1119,7 @@ def get_historical_bars(
         if isinstance(e, MarketDataError):
             raise
 
-        raise MarketDataError(
-            f"Failed to get historical data for {spec.symbol}: {e}"
-        ) from e
+        raise MarketDataError(f"Failed to get historical data for {spec.symbol}: {e}") from e
 
     finally:
         # Unregister error handler

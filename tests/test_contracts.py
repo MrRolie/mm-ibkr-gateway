@@ -26,12 +26,12 @@ from ibkr_core.contracts import (
     ContractCache,
     ContractNotFoundError,
     ContractResolutionError,
-    get_contract_cache,
-    resolve_contract,
-    resolve_contracts,
-    get_front_month_expiry,
     _apply_defaults,
     _build_contract,
+    get_contract_cache,
+    get_front_month_expiry,
+    resolve_contract,
+    resolve_contracts,
 )
 from ibkr_core.models import SymbolSpec
 
@@ -45,9 +45,12 @@ def reset_config_and_cache():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -68,6 +71,7 @@ def reset_config_and_cache():
 # =============================================================================
 # Unit Tests - ContractCache
 # =============================================================================
+
 
 class TestContractCache:
     """Test ContractCache functionality."""
@@ -151,6 +155,7 @@ class TestContractCache:
 # Unit Tests - Apply Defaults
 # =============================================================================
 
+
 class TestApplyDefaults:
     """Test default application for known symbols."""
 
@@ -207,6 +212,7 @@ class TestApplyDefaults:
 # =============================================================================
 # Unit Tests - Build Contract
 # =============================================================================
+
 
 class TestBuildContract:
     """Test contract building from SymbolSpec."""
@@ -323,6 +329,7 @@ class TestBuildContract:
 # Unit Tests - Resolve Contract (Mocked)
 # =============================================================================
 
+
 class TestResolveContractMocked:
     """Test resolve_contract with mocked client."""
 
@@ -400,6 +407,7 @@ class TestResolveContractMocked:
 # Integration Tests (require running IBKR Gateway)
 # =============================================================================
 
+
 @pytest.mark.integration
 class TestContractResolutionIntegration:
     """Integration tests requiring running IBKR Gateway.
@@ -411,6 +419,7 @@ class TestContractResolutionIntegration:
     def client(self):
         """Create and connect client for tests."""
         import random
+
         client_id = random.randint(2000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         client.connect(timeout=10)

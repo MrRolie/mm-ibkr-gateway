@@ -15,12 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 from ibkr_core.models import OrderSpec, SymbolSpec
-from ibkr_core.orders import (
-    OrderValidationError,
-    check_safety_guards,
-    validate_order_spec,
-)
-
+from ibkr_core.orders import OrderValidationError, check_safety_guards, validate_order_spec
 
 # =============================================================================
 # Fixtures
@@ -491,7 +486,9 @@ class TestOrderSamplesFromFixture:
 
             # Validate
             errors = validate_order_spec(order)
-            assert errors == [], f"Sample '{sample['description']}' should be valid, got errors: {errors}"
+            assert (
+                errors == []
+            ), f"Sample '{sample['description']}' should be valid, got errors: {errors}"
 
     def test_invalid_orders_from_fixture_fail_pydantic(self, order_samples):
         """Test that invalid order samples fail Pydantic or our validation."""
@@ -513,7 +510,9 @@ class TestOrderSamplesFromFixture:
                 # Should have errors
                 assert errors, f"Sample '{sample['description']}' should have validation errors"
                 error_text = " ".join(errors).lower()
-                assert expected_error_keyword in error_text or sample["expected_error"] in error_text, (
+                assert (
+                    expected_error_keyword in error_text or sample["expected_error"] in error_text
+                ), (
                     f"Sample '{sample['description']}' should mention '{expected_error_keyword}', "
                     f"got: {errors}"
                 )

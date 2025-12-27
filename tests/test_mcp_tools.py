@@ -7,14 +7,14 @@ Tests each tool with mocked HTTP client to verify:
 - Parameter handling (required vs optional)
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from mcp_server.config import MCPConfig
-from mcp_server.http_client import IBKRAPIClient
 from mcp_server.errors import MCPToolError
-
+from mcp_server.http_client import IBKRAPIClient
 
 # =============================================================================
 # Fixtures
@@ -59,25 +59,29 @@ class TestGetQuote:
     @pytest.mark.asyncio
     async def test_get_quote_minimal_params(self, mock_api_client):
         """Test quote with only required parameters."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "symbol": "AAPL",
-            "conId": 265598,
-            "bid": 150.00,
-            "ask": 150.05,
-            "last": 150.02,
-            "bidSize": 100,
-            "askSize": 200,
-            "lastSize": 50,
-            "volume": 1000000,
-            "timestamp": "2024-01-15T14:30:00Z",
-            "source": "IBKR_REALTIME",
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "symbol": "AAPL",
+                "conId": 265598,
+                "bid": 150.00,
+                "ask": 150.05,
+                "last": 150.02,
+                "bidSize": 100,
+                "askSize": 200,
+                "lastSize": 50,
+                "volume": 1000000,
+                "timestamp": "2024-01-15T14:30:00Z",
+                "source": "IBKR_REALTIME",
+            },
+        )
 
         # Import and patch the get_api_client function
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_quote
+
             result = await get_quote(
                 symbol="AAPL",
                 security_type="STK",
@@ -99,17 +103,21 @@ class TestGetQuote:
     @pytest.mark.asyncio
     async def test_get_quote_all_params(self, mock_api_client):
         """Test quote with all parameters."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "symbol": "MES",
-            "conId": 123456,
-            "bid": 4500.00,
-            "ask": 4500.25,
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "symbol": "MES",
+                "conId": 123456,
+                "bid": 4500.00,
+                "ask": 4500.25,
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_quote
+
             await get_quote(
                 symbol="MES",
                 security_type="FUT",
@@ -137,25 +145,29 @@ class TestGetHistoricalData:
     @pytest.mark.asyncio
     async def test_get_historical_data_minimal(self, mock_api_client):
         """Test historical data with minimal parameters."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "symbol": "AAPL",
-            "barCount": 20,
-            "bars": [
-                {
-                    "time": "2024-01-15T00:00:00Z",
-                    "open": 150.0,
-                    "high": 151.0,
-                    "low": 149.0,
-                    "close": 150.5,
-                    "volume": 1000000,
-                }
-            ],
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "symbol": "AAPL",
+                "barCount": 20,
+                "bars": [
+                    {
+                        "time": "2024-01-15T00:00:00Z",
+                        "open": 150.0,
+                        "high": 151.0,
+                        "low": 149.0,
+                        "close": 150.5,
+                        "volume": 1000000,
+                    }
+                ],
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_historical_data
+
             result = await get_historical_data(
                 symbol="AAPL",
                 security_type="STK",
@@ -178,16 +190,20 @@ class TestGetHistoricalData:
     @pytest.mark.asyncio
     async def test_get_historical_data_custom_options(self, mock_api_client):
         """Test historical data with custom options."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "symbol": "SPY",
-            "barCount": 5,
-            "bars": [],
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "symbol": "SPY",
+                "barCount": 5,
+                "bars": [],
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_historical_data
+
             await get_historical_data(
                 symbol="SPY",
                 security_type="ETF",
@@ -214,27 +230,34 @@ class TestGetAccountStatus:
     async def test_get_account_status_default(self, mock_api_client):
         """Test account status with default account."""
         mock_api_client.get.side_effect = [
-            create_mock_response(200, {
-                "accountId": "DU1234567",
-                "currency": "USD",
-                "netLiquidation": 100000.0,
-                "cash": 50000.0,
-                "buyingPower": 200000.0,
-            }),
-            create_mock_response(200, {
-                "accountId": "DU1234567",
-                "positionCount": 2,
-                "positions": [
-                    {"symbol": "AAPL", "quantity": 100},
-                    {"symbol": "MSFT", "quantity": 50},
-                ],
-            }),
+            create_mock_response(
+                200,
+                {
+                    "accountId": "DU1234567",
+                    "currency": "USD",
+                    "netLiquidation": 100000.0,
+                    "cash": 50000.0,
+                    "buyingPower": 200000.0,
+                },
+            ),
+            create_mock_response(
+                200,
+                {
+                    "accountId": "DU1234567",
+                    "positionCount": 2,
+                    "positions": [
+                        {"symbol": "AAPL", "quantity": 100},
+                        {"symbol": "MSFT", "quantity": 50},
+                    ],
+                },
+            ),
         ]
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_account_status
+
             result = await get_account_status()
 
         assert result["summary"]["accountId"] == "DU1234567"
@@ -257,6 +280,7 @@ class TestGetAccountStatus:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_account_status
+
             await get_account_status(account_id="U9876543")
 
         # Verify params were passed
@@ -275,21 +299,23 @@ class TestGetPnl:
     @pytest.mark.asyncio
     async def test_get_pnl_default(self, mock_api_client):
         """Test P&L with default parameters."""
-        mock_api_client.get.return_value = create_mock_response(200, {
-            "accountId": "DU1234567",
-            "currency": "USD",
-            "timeframe": "CURRENT",
-            "realized": 500.0,
-            "unrealized": 1200.0,
-            "bySymbol": {
-                "AAPL": {"symbol": "AAPL", "realized": 200.0, "unrealized": 800.0}
+        mock_api_client.get.return_value = create_mock_response(
+            200,
+            {
+                "accountId": "DU1234567",
+                "currency": "USD",
+                "timeframe": "CURRENT",
+                "realized": 500.0,
+                "unrealized": 1200.0,
+                "bySymbol": {"AAPL": {"symbol": "AAPL", "realized": 200.0, "unrealized": 800.0}},
             },
-        })
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_pnl
+
             result = await get_pnl()
 
         assert result["realized"] == 500.0
@@ -299,16 +325,20 @@ class TestGetPnl:
     @pytest.mark.asyncio
     async def test_get_pnl_with_timeframe(self, mock_api_client):
         """Test P&L with specific timeframe."""
-        mock_api_client.get.return_value = create_mock_response(200, {
-            "timeframe": "MTD",
-            "realized": 1000.0,
-            "unrealized": 500.0,
-        })
+        mock_api_client.get.return_value = create_mock_response(
+            200,
+            {
+                "timeframe": "MTD",
+                "realized": 1000.0,
+                "unrealized": 500.0,
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_pnl
+
             await get_pnl(timeframe="MTD")
 
         call_args = mock_api_client.get.call_args
@@ -326,18 +356,22 @@ class TestPreviewOrder:
     @pytest.mark.asyncio
     async def test_preview_market_order(self, mock_api_client):
         """Test preview of market order."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderSpec": {},
-            "estimatedPrice": 150.0,
-            "estimatedNotional": 1500.0,
-            "estimatedCommission": 1.0,
-            "warnings": [],
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "orderSpec": {},
+                "estimatedPrice": 150.0,
+                "estimatedNotional": 1500.0,
+                "estimatedCommission": 1.0,
+                "warnings": [],
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import preview_order
+
             result = await preview_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -359,15 +393,19 @@ class TestPreviewOrder:
     @pytest.mark.asyncio
     async def test_preview_limit_order(self, mock_api_client):
         """Test preview of limit order."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "estimatedPrice": 150.0,
-            "estimatedNotional": 1500.0,
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "estimatedPrice": 150.0,
+                "estimatedNotional": 1500.0,
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import preview_order
+
             await preview_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -386,19 +424,23 @@ class TestPreviewOrder:
     @pytest.mark.asyncio
     async def test_preview_bracket_order(self, mock_api_client):
         """Test preview of bracket order."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "legs": [
-                {"role": "entry", "orderType": "LMT"},
-                {"role": "take_profit", "orderType": "LMT"},
-                {"role": "stop_loss", "orderType": "STP"},
-            ],
-            "totalNotional": 1500.0,
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "legs": [
+                    {"role": "entry", "orderType": "LMT"},
+                    {"role": "take_profit", "orderType": "LMT"},
+                    {"role": "stop_loss", "orderType": "STP"},
+                ],
+                "totalNotional": 1500.0,
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import preview_order
+
             result = await preview_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -430,22 +472,26 @@ class TestPlaceOrder:
     @pytest.mark.asyncio
     async def test_place_order_accepted(self, mock_api_client):
         """Test successful order placement."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "status": "ACCEPTED",
-            "orderStatus": {
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
                 "orderId": "12345",
-                "status": "SUBMITTED",
-                "filledQuantity": 0,
-                "remainingQuantity": 10,
+                "status": "ACCEPTED",
+                "orderStatus": {
+                    "orderId": "12345",
+                    "status": "SUBMITTED",
+                    "filledQuantity": 0,
+                    "remainingQuantity": 10,
+                },
+                "errors": [],
             },
-            "errors": [],
-        })
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import place_order
+
             result = await place_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -461,16 +507,20 @@ class TestPlaceOrder:
     @pytest.mark.asyncio
     async def test_place_order_simulated(self, mock_api_client):
         """Test order placement when orders disabled."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderId": None,
-            "status": "SIMULATED",
-            "errors": [],
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "orderId": None,
+                "status": "SIMULATED",
+                "errors": [],
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import place_order
+
             result = await place_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -484,16 +534,20 @@ class TestPlaceOrder:
     @pytest.mark.asyncio
     async def test_place_order_with_client_id(self, mock_api_client):
         """Test order placement with client order ID."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "clientOrderId": "my-order-123",
-            "status": "ACCEPTED",
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "orderId": "12345",
+                "clientOrderId": "my-order-123",
+                "status": "ACCEPTED",
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import place_order
+
             await place_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -518,20 +572,24 @@ class TestGetOrderStatus:
     @pytest.mark.asyncio
     async def test_get_order_status_submitted(self, mock_api_client):
         """Test getting status of submitted order."""
-        mock_api_client.get.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "status": "SUBMITTED",
-            "filledQuantity": 0,
-            "remainingQuantity": 10,
-            "avgFillPrice": 0,
-            "lastUpdate": "2024-01-15T14:30:00Z",
-            "warnings": [],
-        })
+        mock_api_client.get.return_value = create_mock_response(
+            200,
+            {
+                "orderId": "12345",
+                "status": "SUBMITTED",
+                "filledQuantity": 0,
+                "remainingQuantity": 10,
+                "avgFillPrice": 0,
+                "lastUpdate": "2024-01-15T14:30:00Z",
+                "warnings": [],
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_order_status
+
             result = await get_order_status(order_id="12345")
 
         assert result["orderId"] == "12345"
@@ -543,18 +601,22 @@ class TestGetOrderStatus:
     @pytest.mark.asyncio
     async def test_get_order_status_filled(self, mock_api_client):
         """Test getting status of filled order."""
-        mock_api_client.get.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "status": "FILLED",
-            "filledQuantity": 10,
-            "remainingQuantity": 0,
-            "avgFillPrice": 150.25,
-        })
+        mock_api_client.get.return_value = create_mock_response(
+            200,
+            {
+                "orderId": "12345",
+                "status": "FILLED",
+                "filledQuantity": 10,
+                "remainingQuantity": 0,
+                "avgFillPrice": 150.25,
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import get_order_status
+
             result = await get_order_status(order_id="12345")
 
         assert result["status"] == "FILLED"
@@ -572,16 +634,20 @@ class TestCancelOrder:
     @pytest.mark.asyncio
     async def test_cancel_order_success(self, mock_api_client):
         """Test successful order cancellation."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "status": "CANCELLED",
-            "message": "Order cancelled successfully",
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "orderId": "12345",
+                "status": "CANCELLED",
+                "message": "Order cancelled successfully",
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import cancel_order
+
             result = await cancel_order(order_id="12345")
 
         assert result["orderId"] == "12345"
@@ -592,16 +658,20 @@ class TestCancelOrder:
     @pytest.mark.asyncio
     async def test_cancel_order_already_filled(self, mock_api_client):
         """Test cancelling already filled order."""
-        mock_api_client.post.return_value = create_mock_response(200, {
-            "orderId": "12345",
-            "status": "ALREADY_FILLED",
-            "message": "Order was already filled",
-        })
+        mock_api_client.post.return_value = create_mock_response(
+            200,
+            {
+                "orderId": "12345",
+                "status": "ALREADY_FILLED",
+                "message": "Order was already filled",
+            },
+        )
 
         with patch("mcp_server.main._app_context") as mock_ctx:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import cancel_order
+
             result = await cancel_order(order_id="12345")
 
         assert result["status"] == "ALREADY_FILLED"
@@ -624,6 +694,7 @@ class TestPayloadConstruction:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import preview_order
+
             await preview_order(
                 instrument_symbol="AAPL",
                 instrument_security_type="STK",
@@ -647,6 +718,7 @@ class TestPayloadConstruction:
             mock_ctx.api_client = mock_api_client
 
             from mcp_server.main import place_order
+
             await place_order(
                 instrument_symbol="MES",
                 instrument_security_type="FUT",

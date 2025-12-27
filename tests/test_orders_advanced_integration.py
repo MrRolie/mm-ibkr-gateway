@@ -35,7 +35,6 @@ from ibkr_core.orders import (
     preview_order,
 )
 
-
 # =============================================================================
 # Skip Conditions
 # =============================================================================
@@ -130,7 +129,9 @@ class TestTrailingStopIntegration:
         assert preview.estimatedPrice is not None
         assert preview.estimatedNotional is not None
         assert "Trailing stop" in " ".join(preview.warnings)
-        print(f"TRAIL preview: price={preview.estimatedPrice}, notional={preview.estimatedNotional}")
+        print(
+            f"TRAIL preview: price={preview.estimatedPrice}, notional={preview.estimatedNotional}"
+        )
 
     def test_preview_trailing_stop_with_percent(self, client, aapl_symbol):
         """Test previewing a trailing stop with percentage."""
@@ -318,7 +319,9 @@ class TestBracketOrderIntegration:
 
         preview = preview_order(client, order_spec)
         assert preview.legs[2].orderType == "STP_LMT"
-        print(f"Bracket with stop-limit: stop@{preview.legs[2].stopPrice}, limit@{preview.legs[2].limitPrice}")
+        print(
+            f"Bracket with stop-limit: stop@{preview.legs[2].stopPrice}, limit@{preview.legs[2].limitPrice}"
+        )
 
 
 # =============================================================================

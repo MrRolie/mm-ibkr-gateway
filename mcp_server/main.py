@@ -23,9 +23,9 @@ from typing import Any, Dict, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from mcp_server.config import get_mcp_config, MCPConfig
+from mcp_server.config import MCPConfig, get_mcp_config
+from mcp_server.errors import handle_response
 from mcp_server.http_client import IBKRAPIClient
-from mcp_server.errors import handle_response, MCPToolError
 
 # Configure logging
 logging.basicConfig(
@@ -134,7 +134,8 @@ async def get_quote(
         expiry: Contract expiry for derivatives in YYYY-MM-DD format. Optional.
 
     Returns:
-        Quote with: symbol, conId, bid, ask, last, bidSize, askSize, lastSize, volume, timestamp, source
+        Quote with: symbol, conId, bid, ask, last, bidSize, askSize, lastSize,
+        volume, timestamp, source
     """
     api = get_api_client()
 
@@ -180,7 +181,8 @@ async def get_historical_data(
         rth_only: Regular trading hours only. Default: True
 
     Returns:
-        Object with: symbol, barCount, bars (list of OHLCV with time, open, high, low, close, volume)
+        Object with: symbol, barCount, bars (list of OHLCV with time, open, high,
+        low, close, volume)
     """
     api = get_api_client()
 
@@ -222,8 +224,10 @@ async def get_account_status(
 
     Returns:
         Object with:
-        - summary: accountId, currency, netLiquidation, cash, buyingPower, marginExcess, maintenanceMargin, initialMargin
-        - positions: list of positions with symbol, quantity, avgPrice, marketPrice, marketValue, unrealizedPnl
+        - summary: accountId, currency, netLiquidation, cash, buyingPower,
+          marginExcess, maintenanceMargin, initialMargin
+        - positions: list of positions with symbol, quantity, avgPrice,
+          marketPrice, marketValue, unrealizedPnl
         - positionCount: number of positions
     """
     api = get_api_client()
@@ -403,7 +407,8 @@ async def preview_order(
         stop_loss_price: Stop loss price for BRACKET orders. Optional.
 
     Returns:
-        Preview with: estimatedPrice, estimatedNotional, estimatedCommission, warnings, legs (for bracket)
+        Preview with: estimatedPrice, estimatedNotional, estimatedCommission,
+        warnings, legs (for bracket)
     """
     api = get_api_client()
 
@@ -522,7 +527,8 @@ async def get_order_status(
     Returns:
         OrderStatus with:
         - orderId, clientOrderId
-        - status: PENDING_SUBMIT, PENDING_CANCEL, SUBMITTED, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED, EXPIRED
+        - status: PENDING_SUBMIT, PENDING_CANCEL, SUBMITTED, PARTIALLY_FILLED,
+          FILLED, CANCELLED, REJECTED, EXPIRED
         - filledQuantity, remainingQuantity
         - avgFillPrice
         - lastUpdate

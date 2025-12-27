@@ -24,9 +24,9 @@ import pytest
 from ibkr_core.account import (
     AccountError,
     AccountSummaryError,
+    _get_default_account_id,
     get_account_summary,
     list_managed_accounts,
-    _get_default_account_id,
 )
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import reset_config
@@ -41,9 +41,12 @@ def reset_environment():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -320,9 +323,7 @@ class TestGetDefaultAccountId:
     def test_returns_first_account(self):
         """Test returns first managed account."""
         mock_client = MagicMock()
-        type(mock_client).managed_accounts = PropertyMock(
-            return_value=["DU111111", "DU222222"]
-        )
+        type(mock_client).managed_accounts = PropertyMock(return_value=["DU111111", "DU222222"])
 
         account_id = _get_default_account_id(mock_client)
         assert account_id == "DU111111"
@@ -349,9 +350,7 @@ class TestListManagedAccounts:
         mock_client = MagicMock()
         mock_client.is_connected = True
         mock_client.ensure_connected = MagicMock()
-        type(mock_client).managed_accounts = PropertyMock(
-            return_value=["DU111111", "DU222222"]
-        )
+        type(mock_client).managed_accounts = PropertyMock(return_value=["DU111111", "DU222222"])
 
         accounts = list_managed_accounts(mock_client)
         assert accounts == ["DU111111", "DU222222"]
@@ -402,6 +401,7 @@ class TestAccountSummaryIntegration:
     def client(self):
         """Create and connect client for tests."""
         import random
+
         client_id = random.randint(4000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         client.connect(timeout=10)

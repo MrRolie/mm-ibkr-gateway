@@ -26,21 +26,25 @@ logger = logging.getLogger(__name__)
 
 class AccountError(Exception):
     """Base exception for account-related errors."""
+
     pass
 
 
 class AccountSummaryError(AccountError):
     """Raised when account summary retrieval fails."""
+
     pass
 
 
 class AccountPositionsError(AccountError):
     """Raised when positions retrieval fails."""
+
     pass
 
 
 class AccountPnlError(AccountError):
     """Raised when P&L retrieval fails."""
+
     pass
 
 
@@ -118,9 +122,7 @@ def get_account_summary(
         summary_values = client.ib.accountSummary()
 
         if not summary_values:
-            raise AccountSummaryError(
-                f"No account summary data received for account {account_id}"
-            )
+            raise AccountSummaryError(f"No account summary data received for account {account_id}")
 
         # Filter by account_id and build a dict of tag -> value
         values_dict: Dict[str, float] = {}
@@ -142,9 +144,7 @@ def get_account_summary(
                 currency = av.currency
 
         if not values_dict:
-            raise AccountSummaryError(
-                f"No account summary values found for account {account_id}"
-            )
+            raise AccountSummaryError(f"No account summary values found for account {account_id}")
 
         # Build AccountSummary model
         now = datetime.now(timezone.utc)
@@ -171,9 +171,7 @@ def get_account_summary(
     except AccountSummaryError:
         raise
     except Exception as e:
-        raise AccountSummaryError(
-            f"Failed to get account summary for {account_id}: {e}"
-        ) from e
+        raise AccountSummaryError(f"Failed to get account summary for {account_id}: {e}") from e
     finally:
         # Cancel the account summary subscription
         try:
@@ -249,9 +247,7 @@ def get_positions(
             contract = pos.contract
 
             # Determine asset class
-            asset_class = SEC_TYPE_TO_ASSET_CLASS.get(
-                contract.secType, contract.secType
-            )
+            asset_class = SEC_TYPE_TO_ASSET_CLASS.get(contract.secType, contract.secType)
 
             # Build symbol string
             symbol = contract.symbol
@@ -300,9 +296,7 @@ def get_positions(
     except AccountPositionsError:
         raise
     except Exception as e:
-        raise AccountPositionsError(
-            f"Failed to get positions for {target_account}: {e}"
-        ) from e
+        raise AccountPositionsError(f"Failed to get positions for {target_account}: {e}") from e
     finally:
         # Cancel positions subscription
         try:
@@ -352,8 +346,7 @@ def get_pnl(
 
     if timeframe:
         logger.warning(
-            f"Timeframe '{timeframe}' is not yet supported. "
-            "Returning current P&L only."
+            f"Timeframe '{timeframe}' is not yet supported. " "Returning current P&L only."
         )
 
     try:
@@ -396,12 +389,12 @@ def get_pnl(
 
         # Use IBKR's account-level PnL if available (more accurate)
         if pnl_data:
-            if hasattr(pnl_data, 'dailyPnL') and pnl_data.dailyPnL is not None:
+            if hasattr(pnl_data, "dailyPnL") and pnl_data.dailyPnL is not None:
                 # dailyPnL includes both realized and unrealized
                 pass
-            if hasattr(pnl_data, 'unrealizedPnL') and pnl_data.unrealizedPnL is not None:
+            if hasattr(pnl_data, "unrealizedPnL") and pnl_data.unrealizedPnL is not None:
                 total_unrealized = pnl_data.unrealizedPnL
-            if hasattr(pnl_data, 'realizedPnL') and pnl_data.realizedPnL is not None:
+            if hasattr(pnl_data, "realizedPnL") and pnl_data.realizedPnL is not None:
                 total_realized = pnl_data.realizedPnL
 
         # Get currency from account summary

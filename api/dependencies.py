@@ -12,13 +12,14 @@ import logging
 import os
 import time
 import uuid
-from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Callable, Optional
 
 from fastapi import Request
 
-from ibkr_core.client import IBKRClient, ConnectionError as IBKRConnectionError
+from ibkr_core.client import ConnectionError as IBKRConnectionError
+from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -121,9 +122,7 @@ class IBKRClientManager:
                     raise e
                 except Exception as e:
                     self._client = None
-                    raise IBKRConnectionError(
-                        f"Failed to connect to IBKR: {e}"
-                    ) from e
+                    raise IBKRConnectionError(f"Failed to connect to IBKR: {e}") from e
 
             return self._client
 
@@ -266,6 +265,7 @@ def run_sync_with_timeout(func: Callable, timeout_s: float, *args, **kwargs):
 
     This is useful for running ib_insync operations that are blocking.
     """
+
     async def _run():
         loop = asyncio.get_running_loop()
         return await asyncio.wait_for(

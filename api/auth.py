@@ -14,7 +14,6 @@ from fastapi.security import APIKeyHeader
 
 from api.errors import ErrorCode, ErrorResponse
 
-
 # API key header name
 API_KEY_HEADER = APIKeyHeader(
     name="X-API-Key",

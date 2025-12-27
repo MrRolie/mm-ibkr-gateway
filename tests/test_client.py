@@ -31,9 +31,12 @@ def reset_config_fixture():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -53,6 +56,7 @@ def reset_config_fixture():
 # =============================================================================
 # Unit Tests (no IBKR connection required)
 # =============================================================================
+
 
 class TestIBKRClientInit:
     """Test IBKRClient initialization."""
@@ -240,6 +244,7 @@ class TestCreateClientFunction:
 # Integration Tests (require running IBKR Gateway)
 # =============================================================================
 
+
 @pytest.mark.integration
 class TestIBKRClientIntegration:
     """Integration tests requiring running IBKR Gateway.
@@ -251,6 +256,7 @@ class TestIBKRClientIntegration:
     def test_connect_paper_gateway(self):
         """Test connection to paper gateway."""
         import random
+
         client_id = random.randint(1000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         try:
@@ -264,6 +270,7 @@ class TestIBKRClientIntegration:
     def test_get_server_time(self):
         """Test getting server time from IBKR."""
         import random
+
         client_id = random.randint(1000, 9999)
         with IBKRClient(mode="paper", client_id=client_id) as client:
             server_time = client.get_server_time()
@@ -274,6 +281,7 @@ class TestIBKRClientIntegration:
         """Test reconnection after disconnect."""
         import random
         import time
+
         client_id = random.randint(1000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
 
@@ -297,6 +305,7 @@ class TestIBKRClientIntegration:
     def test_connection_with_different_client_ids(self):
         """Test that different client IDs work."""
         import random
+
         base_id = random.randint(1000, 8000)
         client1 = IBKRClient(mode="paper", client_id=base_id)
         client2 = IBKRClient(mode="paper", client_id=base_id + 1)

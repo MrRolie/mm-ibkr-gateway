@@ -2,6 +2,7 @@
 IBKR Core Integration Module
 """
 
+from ibkr_core.client import ConnectionError, IBKRClient, create_client
 from ibkr_core.config import (
     Config,
     InvalidConfigError,
@@ -9,11 +10,6 @@ from ibkr_core.config import (
     get_config,
     load_config,
     reset_config,
-)
-from ibkr_core.client import (
-    ConnectionError,
-    IBKRClient,
-    create_client,
 )
 from ibkr_core.contracts import (
     AmbiguousContractError,

@@ -20,16 +20,19 @@ logger = logging.getLogger(__name__)
 
 class ContractResolutionError(Exception):
     """Raised when contract resolution fails."""
+
     pass
 
 
 class ContractNotFoundError(ContractResolutionError):
     """Raised when contract cannot be found at IBKR."""
+
     pass
 
 
 class AmbiguousContractError(ContractResolutionError):
     """Raised when contract specification matches multiple contracts."""
+
     pass
 
 
@@ -43,19 +46,16 @@ SYMBOL_DEFAULTS: Dict[str, Dict[str, str]] = {
     "SPY": {"exchange": "SMART", "currency": "USD"},
     "QQQ": {"exchange": "SMART", "currency": "USD"},
     "IWM": {"exchange": "SMART", "currency": "USD"},
-
     # Micro E-mini Futures
     "MES": {"exchange": "CME", "currency": "USD"},
     "MNQ": {"exchange": "CME", "currency": "USD"},
     "M2K": {"exchange": "CME", "currency": "USD"},
     "MYM": {"exchange": "CME", "currency": "USD"},
-
     # E-mini Futures
     "ES": {"exchange": "CME", "currency": "USD"},
     "NQ": {"exchange": "CME", "currency": "USD"},
     "RTY": {"exchange": "CME", "currency": "USD"},
     "YM": {"exchange": "CME", "currency": "USD"},
-
     # Indices
     "SPX": {"exchange": "CBOE", "currency": "USD"},
     "NDX": {"exchange": "NASDAQ", "currency": "USD"},
@@ -273,10 +273,7 @@ def resolve_contract(
                 )
 
             # Sort by expiry and pick the front month (earliest expiry)
-            sorted_details = sorted(
-                details,
-                key=lambda d: d.contract.lastTradeDateOrContractMonth
-            )
+            sorted_details = sorted(details, key=lambda d: d.contract.lastTradeDateOrContractMonth)
             qualified = sorted_details[0].contract
 
             logger.info(
@@ -309,9 +306,7 @@ def resolve_contract(
     except Exception as e:
         if isinstance(e, ContractResolutionError):
             raise
-        raise ContractResolutionError(
-            f"Failed to resolve contract for {spec.symbol}: {e}"
-        ) from e
+        raise ContractResolutionError(f"Failed to resolve contract for {spec.symbol}: {e}") from e
 
 
 def resolve_contracts(

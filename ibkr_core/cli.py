@@ -13,22 +13,20 @@ Usage:
     ibkr-gateway start-api
 """
 
-import sys
 import subprocess
+import sys
 from datetime import datetime
 from typing import Optional
-from pathlib import Path
 
 import typer
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
-from ibkr_core.client import create_client, ConnectionError
-from ibkr_core.config import get_config, InvalidConfigError, reset_config
 from ibkr_core import demo as demo_module
-
+from ibkr_core.client import ConnectionError, create_client
+from ibkr_core.config import InvalidConfigError, get_config, reset_config
 
 # Initialize Typer app
 app = typer.Typer(
@@ -284,7 +282,9 @@ def start_api(
 
     # Display endpoints
     console.print("[bold]Available Endpoints:[/bold]")
-    console.print(f"  • API Documentation: [link=http://{host}:{port}/docs]http://{host}:{port}/docs[/link]")
+    console.print(
+        f"  • API Documentation: [link=http://{host}:{port}/docs]http://{host}:{port}/docs[/link]"
+    )
     console.print(f"  • Health Check: http://{host}:{port}/health")
     console.print(f"  • OpenAPI Schema: http://{host}:{port}/openapi.json")
     console.print()
@@ -317,9 +317,7 @@ def start_api(
         console.print(f"\n[red]Server failed: {e}[/red]")
         raise typer.Exit(1)
     except FileNotFoundError:
-        console.print(
-            "\n[red]Error: uvicorn not found. Install with: poetry install[/red]"
-        )
+        console.print("\n[red]Error: uvicorn not found. Install with: poetry install[/red]")
         raise typer.Exit(1)
 
 

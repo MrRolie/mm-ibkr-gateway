@@ -34,7 +34,6 @@ from ibkr_core.orders import (
     preview_order,
 )
 
-
 # =============================================================================
 # Skip Conditions
 # =============================================================================
@@ -141,8 +140,10 @@ class TestOrderPreviewIntegration:
         assert preview.estimatedNotional > 0
         assert isinstance(preview.warnings, list)
 
-        print(f"\nPreview MKT: estimated_price={preview.estimatedPrice:.2f}, "
-              f"notional={preview.estimatedNotional:.2f}")
+        print(
+            f"\nPreview MKT: estimated_price={preview.estimatedPrice:.2f}, "
+            f"notional={preview.estimatedNotional:.2f}"
+        )
 
     def test_preview_limit_order(self, client, aapl_spec):
         """Test previewing a limit order."""
@@ -160,8 +161,10 @@ class TestOrderPreviewIntegration:
         assert preview is not None
         assert preview.estimatedPrice == 100.00  # Uses limit price
         assert preview.estimatedNotional == 1000.00  # 10 * 100
-        print(f"\nPreview LMT: price={preview.estimatedPrice}, "
-              f"notional={preview.estimatedNotional}")
+        print(
+            f"\nPreview LMT: price={preview.estimatedPrice}, "
+            f"notional={preview.estimatedNotional}"
+        )
 
     def test_preview_futures_order(self, client, mes_spec):
         """Test previewing a futures order."""
@@ -180,8 +183,10 @@ class TestOrderPreviewIntegration:
         assert preview.estimatedPrice == 5000.00
         # MES has multiplier of 5, so notional = 1 * 5000 * 5 = 25000
         assert preview.estimatedNotional is not None
-        print(f"\nPreview FUT: price={preview.estimatedPrice}, "
-              f"notional={preview.estimatedNotional}")
+        print(
+            f"\nPreview FUT: price={preview.estimatedPrice}, "
+            f"notional={preview.estimatedNotional}"
+        )
 
     def test_preview_does_not_place_order(self, client, aapl_spec):
         """Test that preview does not actually place an order."""
@@ -309,8 +314,10 @@ class TestOrderPlacementIntegration:
         assert status.remainingQuantity >= 0
         assert status.avgFillPrice >= 0
 
-        print(f"\nStatus: {status.status}, filled={status.filledQuantity}, "
-              f"remaining={status.remainingQuantity}")
+        print(
+            f"\nStatus: {status.status}, filled={status.filledQuantity}, "
+            f"remaining={status.remainingQuantity}"
+        )
 
         # Cleanup
         cancel_order(client, order_id)

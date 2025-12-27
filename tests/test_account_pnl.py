@@ -25,9 +25,9 @@ from ibkr_core.account import (
     AccountError,
     AccountPnlError,
     AccountPositionsError,
+    get_account_summary,
     get_pnl,
     get_positions,
-    get_account_summary,
 )
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import reset_config
@@ -42,9 +42,12 @@ def reset_environment():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -145,8 +148,12 @@ class TestAccountPnlModel:
             realized=1000.00,
             unrealized=5000.00,
             bySymbol={
-                "AAPL": PnlDetail(symbol="AAPL", currency="USD", realized=500.00, unrealized=2500.00),
-                "MSFT": PnlDetail(symbol="MSFT", currency="USD", realized=500.00, unrealized=2500.00),
+                "AAPL": PnlDetail(
+                    symbol="AAPL", currency="USD", realized=500.00, unrealized=2500.00
+                ),
+                "MSFT": PnlDetail(
+                    symbol="MSFT", currency="USD", realized=500.00, unrealized=2500.00
+                ),
             },
             timestamp=now,
         )
@@ -186,7 +193,9 @@ class TestAccountPnlModel:
             realized=1000.00,
             unrealized=5000.00,
             bySymbol={
-                "AAPL": PnlDetail(symbol="AAPL", currency="USD", realized=500.00, unrealized=2500.00),
+                "AAPL": PnlDetail(
+                    symbol="AAPL", currency="USD", realized=500.00, unrealized=2500.00
+                ),
             },
             timestamp=now,
         )
@@ -282,6 +291,7 @@ class TestGetPnlMocked:
 
         # Mock account summary
         from ibkr_core.models import AccountSummary
+
         mock_summary = AccountSummary(
             accountId="DU123456",
             currency="USD",
@@ -323,6 +333,7 @@ class TestGetPnlMocked:
         ]
 
         from ibkr_core.models import AccountSummary
+
         mock_summary = AccountSummary(
             accountId="DU123456",
             currency="USD",
@@ -356,6 +367,7 @@ class TestGetPnlMocked:
         mock_client.ib.cancelPnL = MagicMock()
 
         from ibkr_core.models import AccountSummary
+
         mock_summary = AccountSummary(
             accountId="DU123456",
             currency="USD",
@@ -387,6 +399,7 @@ class TestGetPnlMocked:
         mock_client.ib.cancelPnL = MagicMock()
 
         from ibkr_core.models import AccountSummary
+
         mock_summary = AccountSummary(
             accountId="DU123456",
             currency="USD",
@@ -433,6 +446,7 @@ class TestGetPnlMocked:
         ]
 
         from ibkr_core.models import AccountSummary
+
         mock_summary = AccountSummary(
             accountId="DU123456",
             currency="USD",
@@ -484,6 +498,7 @@ class TestAccountPnlIntegration:
     def client(self):
         """Create and connect client for tests."""
         import random
+
         client_id = random.randint(6000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         client.connect(timeout=10)

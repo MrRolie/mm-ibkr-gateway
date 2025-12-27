@@ -21,12 +21,7 @@ from unittest.mock import MagicMock, PropertyMock
 
 import pytest
 
-from ibkr_core.account import (
-    AccountError,
-    AccountPositionsError,
-    get_positions,
-    get_account_status,
-)
+from ibkr_core.account import AccountError, AccountPositionsError, get_account_status, get_positions
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import reset_config
 from ibkr_core.models import Position
@@ -40,9 +35,12 @@ def reset_environment():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
@@ -451,6 +449,7 @@ class TestGetAccountStatusMocked:
 
         # Mock account summary
         from tests.test_account_summary import MockAccountValue
+
         mock_summary_values = [
             MockAccountValue("DU123456", "NetLiquidation", "100000.00", "USD"),
             MockAccountValue("DU123456", "TotalCashValue", "50000.00", "USD"),
@@ -517,6 +516,7 @@ class TestAccountPositionsIntegration:
     def client(self):
         """Create and connect client for tests."""
         import random
+
         client_id = random.randint(5000, 9999)
         client = IBKRClient(mode="paper", client_id=client_id)
         client.connect(timeout=10)

@@ -4,17 +4,17 @@ Tests for MCP error handling and translation.
 Verifies that HTTP errors are correctly translated to MCP errors.
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from mcp_server.errors import (
-    MCPToolError,
-    translate_http_error,
-    handle_response,
     HTTP_STATUS_TO_ERROR,
+    MCPToolError,
+    handle_response,
+    translate_http_error,
 )
-
 
 # =============================================================================
 # Test MCPToolError
@@ -311,8 +311,8 @@ class TestErrorPropagation:
     @pytest.mark.asyncio
     async def test_tool_propagates_connection_error(self):
         """Tool should propagate connection error from API."""
-        from mcp_server.http_client import IBKRAPIClient
         from mcp_server.config import MCPConfig
+        from mcp_server.http_client import IBKRAPIClient
 
         config = MCPConfig(api_base_url="http://localhost:8000")
         client = IBKRAPIClient(config)
@@ -339,8 +339,8 @@ class TestErrorPropagation:
     @pytest.mark.asyncio
     async def test_tool_propagates_validation_error(self):
         """Tool should propagate validation error from API."""
-        from mcp_server.http_client import IBKRAPIClient
         from mcp_server.config import MCPConfig
+        from mcp_server.http_client import IBKRAPIClient
 
         config = MCPConfig(api_base_url="http://localhost:8000")
         client = IBKRAPIClient(config)

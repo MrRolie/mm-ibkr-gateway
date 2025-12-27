@@ -24,7 +24,6 @@ from ibkr_core.orders import (
     preview_order,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -39,9 +38,12 @@ def reset_environment():
     old_env = {}
     env_keys = [
         "IBKR_GATEWAY_HOST",
-        "PAPER_GATEWAY_PORT", "PAPER_CLIENT_ID",
-        "LIVE_GATEWAY_PORT", "LIVE_CLIENT_ID",
-        "TRADING_MODE", "ORDERS_ENABLED",
+        "PAPER_GATEWAY_PORT",
+        "PAPER_CLIENT_ID",
+        "LIVE_GATEWAY_PORT",
+        "LIVE_CLIENT_ID",
+        "TRADING_MODE",
+        "ORDERS_ENABLED",
         "LIVE_TRADING_OVERRIDE_FILE",
     ]
     for key in env_keys:
@@ -438,9 +440,7 @@ class TestOrderRegistry:
 class TestValidationRejection:
     """Test that invalid orders are rejected without calling IBKR."""
 
-    def test_invalid_order_rejected_without_ibkr_call(
-        self, mock_client, valid_symbol_spec
-    ):
+    def test_invalid_order_rejected_without_ibkr_call(self, mock_client, valid_symbol_spec):
         """Test that validation errors prevent IBKR call."""
         os.environ["TRADING_MODE"] = "paper"
         os.environ["ORDERS_ENABLED"] = "true"
@@ -496,23 +496,28 @@ class TestValidationRejection:
 class TestEnvironmentVariableParsing:
     """Test parsing of ORDERS_ENABLED environment variable."""
 
-    @pytest.mark.parametrize("value,expected", [
-        ("true", True),
-        ("True", True),
-        ("TRUE", True),
-        ("yes", True),
-        ("YES", True),
-        ("1", True),
-        ("false", False),
-        ("False", False),
-        ("FALSE", False),
-        ("no", False),
-        ("NO", False),
-        ("0", False),
-        ("", False),
-        ("invalid", False),
-    ])
-    def test_orders_enabled_parsing(self, value, expected, mock_client, valid_order_spec, mock_quote, mock_contract):
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("true", True),
+            ("True", True),
+            ("TRUE", True),
+            ("yes", True),
+            ("YES", True),
+            ("1", True),
+            ("false", False),
+            ("False", False),
+            ("FALSE", False),
+            ("no", False),
+            ("NO", False),
+            ("0", False),
+            ("", False),
+            ("invalid", False),
+        ],
+    )
+    def test_orders_enabled_parsing(
+        self, value, expected, mock_client, valid_order_spec, mock_quote, mock_contract
+    ):
         """Test various ORDERS_ENABLED values."""
         os.environ["TRADING_MODE"] = "paper"
         os.environ["ORDERS_ENABLED"] = value

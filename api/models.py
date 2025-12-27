@@ -26,7 +26,6 @@ from ibkr_core.models import (  # noqa: F401
     SymbolSpec,
 )
 
-
 # =============================================================================
 # Health Check
 # =============================================================================
@@ -37,9 +36,7 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., description="Overall status: 'ok' or 'degraded'")
     ibkr_connected: bool = Field(..., description="Whether IBKR gateway is connected")
-    server_time: Optional[str] = Field(
-        None, description="IBKR server time if connected"
-    )
+    server_time: Optional[str] = Field(None, description="IBKR server time if connected")
     trading_mode: str = Field(..., description="Current trading mode (paper/live)")
     orders_enabled: bool = Field(..., description="Whether orders are enabled")
     version: str = Field(default="0.1.0", description="API version")
@@ -52,7 +49,7 @@ class HealthResponse(BaseModel):
                 "server_time": "2024-01-15T14:30:00Z",
                 "trading_mode": "paper",
                 "orders_enabled": False,
-                "version": "0.1.0"
+                "version": "0.1.0",
             }
         }
 
@@ -66,16 +63,10 @@ class QuoteRequest(BaseModel):
     """Request for a market data quote."""
 
     symbol: str = Field(..., description="Symbol/ticker, e.g. 'AAPL', 'MES'")
-    securityType: str = Field(
-        ..., description="Security type: STK, ETF, FUT, OPT, IND"
-    )
-    exchange: Optional[str] = Field(
-        None, description="Exchange, e.g. 'SMART', 'GLOBEX'"
-    )
+    securityType: str = Field(..., description="Security type: STK, ETF, FUT, OPT, IND")
+    exchange: Optional[str] = Field(None, description="Exchange, e.g. 'SMART', 'GLOBEX'")
     currency: Optional[str] = Field(None, description="Currency, e.g. 'USD'")
-    expiry: Optional[str] = Field(
-        None, description="Contract expiry for derivatives (YYYY-MM-DD)"
-    )
+    expiry: Optional[str] = Field(None, description="Contract expiry for derivatives (YYYY-MM-DD)")
 
     def to_symbol_spec(self) -> SymbolSpec:
         """Convert to SymbolSpec for ibkr_core."""
@@ -93,7 +84,7 @@ class QuoteRequest(BaseModel):
                 "symbol": "AAPL",
                 "securityType": "STK",
                 "exchange": "SMART",
-                "currency": "USD"
+                "currency": "USD",
             }
         }
 
@@ -106,20 +97,12 @@ class HistoricalBarsRequest(BaseModel):
     exchange: Optional[str] = Field(None, description="Exchange")
     currency: Optional[str] = Field(None, description="Currency")
     expiry: Optional[str] = Field(None, description="Contract expiry for derivatives")
-    barSize: str = Field(
-        ..., description="Bar size: 1m, 5m, 15m, 1h, 1d, etc."
-    )
-    duration: str = Field(
-        ..., description="Duration: 1d, 5d, 1w, 1mo, 3mo, 1y, etc."
-    )
+    barSize: str = Field(..., description="Bar size: 1m, 5m, 15m, 1h, 1d, etc.")
+    duration: str = Field(..., description="Duration: 1d, 5d, 1w, 1mo, 3mo, 1y, etc.")
     whatToShow: str = Field(
-        default="TRADES",
-        description="Data type: TRADES, MIDPOINT, BID, ASK, etc."
+        default="TRADES", description="Data type: TRADES, MIDPOINT, BID, ASK, etc."
     )
-    rthOnly: bool = Field(
-        default=True,
-        description="Regular trading hours only"
-    )
+    rthOnly: bool = Field(default=True, description="Regular trading hours only")
 
     def to_symbol_spec(self) -> SymbolSpec:
         """Convert to SymbolSpec for ibkr_core."""
@@ -141,7 +124,7 @@ class HistoricalBarsRequest(BaseModel):
                 "barSize": "1d",
                 "duration": "1mo",
                 "whatToShow": "TRADES",
-                "rthOnly": True
+                "rthOnly": True,
             }
         }
 
@@ -154,13 +137,7 @@ class HistoricalBarsResponse(BaseModel):
     barCount: int = Field(..., description="Number of bars returned")
 
     class Config:
-        json_schema_extra = {
-            "example": {
-                "symbol": "AAPL",
-                "barCount": 20,
-                "bars": []
-            }
-        }
+        json_schema_extra = {"example": {"symbol": "AAPL", "barCount": 20, "bars": []}}
 
 
 # =============================================================================
@@ -177,11 +154,7 @@ class PositionsResponse(BaseModel):
 
     class Config:
         json_schema_extra = {
-            "example": {
-                "accountId": "DU1234567",
-                "positionCount": 3,
-                "positions": []
-            }
+            "example": {"accountId": "DU1234567", "positionCount": 3, "positions": []}
         }
 
 
@@ -212,19 +185,13 @@ class OrderRequest(BaseModel):
 
     # Trailing stop parameters
     trailingAmount: Optional[float] = Field(None, gt=0, description="Trailing amount")
-    trailingPercent: Optional[float] = Field(
-        None, gt=0, le=100, description="Trailing percent"
-    )
+    trailingPercent: Optional[float] = Field(None, gt=0, le=100, description="Trailing percent")
     trailStopPrice: Optional[float] = Field(None, ge=0, description="Initial trail stop")
 
     # Bracket parameters
-    takeProfitPrice: Optional[float] = Field(
-        None, ge=0, description="Take profit price"
-    )
+    takeProfitPrice: Optional[float] = Field(None, ge=0, description="Take profit price")
     stopLossPrice: Optional[float] = Field(None, ge=0, description="Stop loss price")
-    stopLossLimitPrice: Optional[float] = Field(
-        None, ge=0, description="Stop loss limit price"
-    )
+    stopLossLimitPrice: Optional[float] = Field(None, ge=0, description="Stop loss limit price")
     bracketTransmit: bool = Field(default=True, description="Transmit bracket legs")
 
     # OCA parameters
@@ -280,13 +247,13 @@ class OrderRequest(BaseModel):
                     "symbol": "AAPL",
                     "securityType": "STK",
                     "exchange": "SMART",
-                    "currency": "USD"
+                    "currency": "USD",
                 },
                 "side": "BUY",
                 "quantity": 10,
                 "orderType": "LMT",
                 "limitPrice": 150.00,
-                "tif": "DAY"
+                "tif": "DAY",
             }
         }
 

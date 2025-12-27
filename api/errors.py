@@ -55,16 +55,14 @@ class ErrorResponse(BaseModel):
 
     error_code: str = Field(..., description="Machine-readable error code")
     message: str = Field(..., description="Human-readable error message")
-    details: Optional[Dict[str, Any]] = Field(
-        None, description="Additional error details"
-    )
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "error_code": "VALIDATION_ERROR",
                 "message": "Invalid order specification",
-                "details": {"field": "quantity", "reason": "must be positive"}
+                "details": {"field": "quantity", "reason": "must be positive"},
             }
         }
 
@@ -193,6 +191,12 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 # Map ibkr_core exceptions to API error codes
 def map_ibkr_exception(exc: Exception) -> APIError:
     """Map ibkr_core exceptions to API errors."""
+    from ibkr_core.account import (
+        AccountError,
+        AccountPnlError,
+        AccountPositionsError,
+        AccountSummaryError,
+    )
     from ibkr_core.client import ConnectionError as IBKRConnectionError
     from ibkr_core.config import TradingDisabledError as IBKRTradingDisabled
     from ibkr_core.contracts import ContractResolutionError
@@ -202,12 +206,6 @@ def map_ibkr_exception(exc: Exception) -> APIError:
         MarketDataTimeoutError,
         NoMarketDataError,
         PacingViolationError,
-    )
-    from ibkr_core.account import (
-        AccountError,
-        AccountPnlError,
-        AccountPositionsError,
-        AccountSummaryError,
     )
     from ibkr_core.orders import (
         OrderCancelError,

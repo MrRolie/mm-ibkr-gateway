@@ -5,8 +5,8 @@ Tests IBKRClient and contract resolution against the paper gateway.
 Run with: python scripts/test_phase1.py
 """
 
-import sys
 import random
+import sys
 
 # Add parent to path
 sys.path.insert(0, ".")
@@ -20,10 +20,10 @@ print("=" * 60)
 
 from ibkr_core.client import IBKRClient
 from ibkr_core.contracts import (
+    get_contract_cache,
+    get_front_month_expiry,
     resolve_contract,
     resolve_contracts,
-    get_front_month_expiry,
-    get_contract_cache,
 )
 from ibkr_core.models import SymbolSpec
 
