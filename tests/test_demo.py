@@ -110,12 +110,15 @@ def test_demo_market_data_success():
     # Mock SPY bars
     mock_bars = [
         Bar(
-            timestamp=datetime.now(),
+            symbol="SPY",
+            time=datetime.now(),
             open=450.0,
             high=451.0,
             low=449.5,
             close=450.5,
             volume=1000000,
+            barSize="1 hour",
+            source="IBKR_HISTORICAL",
         )
         for _ in range(5)
     ]
@@ -158,11 +161,9 @@ def test_demo_account_status_success():
         accountId="DU123456",
         currency="USD",
         netLiquidation=100000.0,
-        totalCash=50000.0,
+        cash=50000.0,
         buyingPower=200000.0,
-        grossPositionValue=50000.0,
-        unrealizedPnL=1000.0,
-        realizedPnL=500.0,
+        timestamp=datetime.now(),
     )
 
     # Mock positions
@@ -171,13 +172,14 @@ def test_demo_account_status_success():
             accountId="DU123456",
             symbol="AAPL",
             conId=265598,
-            securityType="STK",
-            position=100,
-            averageCost=150.0,
+            assetClass="STK",
+            currency="USD",
+            quantity=100,
+            avgPrice=150.0,
             marketPrice=155.0,
             marketValue=15500.0,
-            unrealizedPnL=500.0,
-            realizedPnL=0.0,
+            unrealizedPnl=500.0,
+            realizedPnl=0.0,
         )
     ]
 
@@ -196,9 +198,9 @@ def test_demo_account_status_no_positions():
         accountId="DU123456",
         currency="USD",
         netLiquidation=100000.0,
-        totalCash=100000.0,
+        cash=100000.0,
         buyingPower=200000.0,
-        grossPositionValue=0.0,
+        timestamp=datetime.now(),
     )
 
     with patch("ibkr_core.demo.get_account_summary", return_value=mock_summary):
@@ -257,10 +259,11 @@ def test_main_keyboard_interrupt():
     mock_client = Mock()
 
     with patch("ibkr_core.demo.validate_paper_mode", return_value=True):
-        with patch("ibkr_core.demo.create_client", return_value=mock_client):
-            with patch("ibkr_core.demo.demo_market_data") as mock_demo:
-                mock_demo.side_effect = KeyboardInterrupt()
-                result = main()
+        with patch("ibkr_core.demo.check_gateway_connection", return_value=True):
+            with patch("ibkr_core.demo.create_client", return_value=mock_client):
+                with patch("ibkr_core.demo.demo_market_data") as mock_demo:
+                    mock_demo.side_effect = KeyboardInterrupt()
+                    result = main()
 
     assert result == 1
     mock_client.disconnect.assert_called_once()
@@ -271,10 +274,11 @@ def test_main_unexpected_error():
     mock_client = Mock()
 
     with patch("ibkr_core.demo.validate_paper_mode", return_value=True):
-        with patch("ibkr_core.demo.create_client", return_value=mock_client):
-            with patch("ibkr_core.demo.demo_market_data") as mock_demo:
-                mock_demo.side_effect = RuntimeError("Unexpected")
-                result = main()
+        with patch("ibkr_core.demo.check_gateway_connection", return_value=True):
+            with patch("ibkr_core.demo.create_client", return_value=mock_client):
+                with patch("ibkr_core.demo.demo_market_data") as mock_demo:
+                    mock_demo.side_effect = RuntimeError("Unexpected")
+                    result = main()
 
     assert result == 1
     mock_client.disconnect.assert_called_once()

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
+from ibkr_core.client import ConnectionError as IBKRConnectionError
+
 
 @pytest.fixture(autouse=True)
 def reset_env():
@@ -33,13 +35,35 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def client_disconnected():
+    """Create a test client with mocked IBKR client manager as disconnected."""
+    from api.server import app
+    from api.dependencies import get_client_manager
+
+    # Create mock client manager
+    mock_manager = MagicMock()
+    mock_manager.is_connected = False
+    mock_manager.get_client = AsyncMock(
+        side_effect=IBKRConnectionError("IBKR Gateway not available")
+    )
+
+    # Override the dependency
+    app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
+    client = TestClient(app)
+    yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 class TestHealthEndpoint:
     """Tests for GET /health."""
 
-    def test_health_returns_200_degraded_when_not_connected(self, client):
+    def test_health_returns_200_degraded_when_not_connected(self, client_disconnected):
         """Health endpoint should return 200 with degraded status when IBKR not connected."""
-        # The test client won't have IBKR, so it will be degraded
-        response = client.get("/health")
+        response = client_disconnected.get("/health")
 
         assert response.status_code == 200
         data = response.json()

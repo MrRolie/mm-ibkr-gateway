@@ -198,6 +198,10 @@ def healthcheck(
         console.print(f"[red]✗ Configuration error: {e}[/red]\n")
         raise typer.Exit(1)
 
+    except typer.Exit:
+        # Re-raise typer.Exit without catching it as a general exception
+        raise
+
     except Exception as e:
         console.print(f"[red]✗ Unexpected error: {e}[/red]\n")
         raise typer.Exit(1)

@@ -217,7 +217,7 @@ def demo_market_data(client: IBKRClient) -> bool:
 
         # Show last 5 bars
         for bar in bars[-5:]:
-            print(f"    {bar.timestamp.strftime('%Y-%m-%d %H:%M')} | "
+            print(f"    {bar.time.strftime('%Y-%m-%d %H:%M')} | "
                   f"O: ${bar.open:7.2f} | H: ${bar.high:7.2f} | "
                   f"L: ${bar.low:7.2f} | C: ${bar.close:7.2f} | "
                   f"V: {bar.volume:>10,}")
@@ -257,17 +257,10 @@ def demo_account_status(client: IBKRClient) -> bool:
         print(f"  {Colors.BOLD}Account ID:{Colors.END} {summary.accountId}")
         print(f"  {Colors.BOLD}Currency:{Colors.END} {summary.currency}")
         print(f"  {Colors.BOLD}Net Liquidation:{Colors.END} ${summary.netLiquidation:,.2f}")
-        print(f"  {Colors.BOLD}Total Cash:{Colors.END} ${summary.totalCash:,.2f}")
+        print(f"  {Colors.BOLD}Cash:{Colors.END} ${summary.cash:,.2f}")
         print(f"  {Colors.BOLD}Buying Power:{Colors.END} ${summary.buyingPower:,.2f}")
-        print(f"  {Colors.BOLD}Gross Position Value:{Colors.END} ${summary.grossPositionValue:,.2f}")
-
-        if summary.unrealizedPnL:
-            pnl_color = Colors.GREEN if summary.unrealizedPnL >= 0 else Colors.RED
-            print(f"  {Colors.BOLD}Unrealized P&L:{Colors.END} {pnl_color}${summary.unrealizedPnL:,.2f}{Colors.END}")
-
-        if summary.realizedPnL:
-            pnl_color = Colors.GREEN if summary.realizedPnL >= 0 else Colors.RED
-            print(f"  {Colors.BOLD}Realized P&L:{Colors.END} {pnl_color}${summary.realizedPnL:,.2f}{Colors.END}")
+        print(f"  {Colors.BOLD}Maintenance Margin:{Colors.END} ${summary.maintenanceMargin:,.2f}")
+        print(f"  {Colors.BOLD}Initial Margin:{Colors.END} ${summary.initialMargin:,.2f}")
 
     except AccountError as e:
         print_error(f"Account error: {e}")
@@ -294,11 +287,11 @@ def demo_account_status(client: IBKRClient) -> bool:
             print()
 
             for pos in positions:
-                pnl_color = Colors.GREEN if pos.unrealizedPnL >= 0 else Colors.RED
-                print(f"  {Colors.BOLD}{pos.symbol}{Colors.END} ({pos.securityType})")
-                print(f"    Position: {pos.position:,.2f} @ ${pos.averageCost:.2f}")
+                pnl_color = Colors.GREEN if pos.unrealizedPnl >= 0 else Colors.RED
+                print(f"  {Colors.BOLD}{pos.symbol}{Colors.END} ({pos.assetClass})")
+                print(f"    Position: {pos.quantity:,.2f} @ ${pos.avgPrice:.2f}")
                 print(f"    Market Value: ${pos.marketValue:,.2f}")
-                print(f"    Unrealized P&L: {pnl_color}${pos.unrealizedPnL:,.2f}{Colors.END}")
+                print(f"    Unrealized P&L: {pnl_color}${pos.unrealizedPnl:,.2f}{Colors.END}")
                 print()
 
     except AccountError as e:

@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ibkr_core.client import ConnectionError as IBKRConnectionError
+
 
 @pytest.fixture(autouse=True)
 def reset_env():
@@ -37,6 +39,29 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def client_disconnected():
+    """Create a test client with mocked IBKR client manager as disconnected."""
+    from api.server import app
+    from api.dependencies import get_client_manager
+
+    # Create mock client manager
+    mock_manager = MagicMock()
+    mock_manager.is_connected = False
+    mock_manager.get_client = AsyncMock(
+        side_effect=IBKRConnectionError("IBKR Gateway not available")
+    )
+
+    # Override the dependency
+    app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
+    client = TestClient(app)
+    yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 # =============================================================================
 # Order Preview Tests
 # =============================================================================
@@ -45,9 +70,9 @@ def client():
 class TestOrderPreviewEndpoint:
     """Tests for POST /orders/preview."""
 
-    def test_preview_returns_503_when_not_connected(self, client):
+    def test_preview_returns_503_when_not_connected(self, client_disconnected):
         """Preview returns 503 when IBKR not connected."""
-        response = client.post(
+        response = client_disconnected.post(
             "/orders/preview",
             json={
                 "instrument": {
@@ -104,9 +129,9 @@ class TestOrderPreviewEndpoint:
 class TestPlaceOrderEndpoint:
     """Tests for POST /orders."""
 
-    def test_place_order_returns_503_when_not_connected(self, client):
+    def test_place_order_returns_503_when_not_connected(self, client_disconnected):
         """Place order returns 503 when IBKR not connected."""
-        response = client.post(
+        response = client_disconnected.post(
             "/orders",
             json={
                 "instrument": {
@@ -165,9 +190,9 @@ class TestPlaceOrderEndpoint:
 class TestCancelOrderEndpoint:
     """Tests for POST /orders/{order_id}/cancel."""
 
-    def test_cancel_order_returns_503_when_not_connected(self, client):
+    def test_cancel_order_returns_503_when_not_connected(self, client_disconnected):
         """Cancel order returns 503 when IBKR not connected."""
-        response = client.post("/orders/12345/cancel")
+        response = client_disconnected.post("/orders/12345/cancel")
 
         assert response.status_code == 503
 
@@ -180,9 +205,9 @@ class TestCancelOrderEndpoint:
 class TestOrderStatusEndpoint:
     """Tests for GET /orders/{order_id}/status."""
 
-    def test_get_order_status_returns_503_when_not_connected(self, client):
+    def test_get_order_status_returns_503_when_not_connected(self, client_disconnected):
         """Get order status returns 503 when IBKR not connected."""
-        response = client.get("/orders/12345/status")
+        response = client_disconnected.get("/orders/12345/status")
 
         assert response.status_code == 503
 
@@ -195,9 +220,9 @@ class TestOrderStatusEndpoint:
 class TestOpenOrdersEndpoint:
     """Tests for GET /orders/open."""
 
-    def test_get_open_orders_returns_503_when_not_connected(self, client):
+    def test_get_open_orders_returns_503_when_not_connected(self, client_disconnected):
         """Get open orders returns 503 when IBKR not connected."""
-        response = client.get("/orders/open")
+        response = client_disconnected.get("/orders/open")
 
         assert response.status_code == 503
 
@@ -246,6 +271,16 @@ class TestOrdersAuth:
         reset_config()
 
         from api.server import app
+        from api.dependencies import get_client_manager
+
+        # Create mock client manager
+        mock_manager = MagicMock()
+        mock_manager.is_connected = False
+        mock_manager.get_client = AsyncMock(
+            side_effect=IBKRConnectionError("IBKR Gateway not available")
+        )
+        app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
         test_client = TestClient(app)
 
         response = test_client.post(
@@ -267,6 +302,7 @@ class TestOrdersAuth:
         assert response.status_code == 503
 
         os.environ.pop("API_KEY", None)
+        app.dependency_overrides.clear()
 
 
 # =============================================================================

@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub issue templates for bugs and features
 - Safety checklist for live trading enablement
 
+### Fixed
+
+- CLI exception handling: `typer.Exit` now properly re-raised to prevent success exits being caught as errors
+- Demo module field names aligned with Pydantic models (`time` instead of `timestamp` for Bar, `cash` instead of `totalCash` for AccountSummary, `unrealizedPnl` instead of `unrealizedPnL` for Position)
+- API test mocking updated to use FastAPI's `app.dependency_overrides` for proper dependency injection testing
+- Demo test fixtures updated with correct Pydantic model field names and required fields
+
 ## [0.1.0] - 2024-12-26
 
 ### Added

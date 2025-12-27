@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ibkr_core.client import ConnectionError as IBKRConnectionError
+
 
 @pytest.fixture(autouse=True)
 def reset_env():
@@ -37,6 +39,29 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def client_disconnected():
+    """Create a test client with mocked IBKR client manager as disconnected."""
+    from api.server import app
+    from api.dependencies import get_client_manager
+
+    # Create mock client manager
+    mock_manager = MagicMock()
+    mock_manager.is_connected = False
+    mock_manager.get_client = AsyncMock(
+        side_effect=IBKRConnectionError("IBKR Gateway not available")
+    )
+
+    # Override the dependency
+    app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
+    client = TestClient(app)
+    yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 # =============================================================================
 # Quote Endpoint Tests
 # =============================================================================
@@ -45,9 +70,9 @@ def client():
 class TestQuoteEndpoint:
     """Tests for POST /market-data/quote."""
 
-    def test_quote_returns_503_when_not_connected(self, client):
+    def test_quote_returns_503_when_not_connected(self, client_disconnected):
         """Quote endpoint returns 503 when IBKR not connected."""
-        response = client.post(
+        response = client_disconnected.post(
             "/market-data/quote",
             json={
                 "symbol": "AAPL",
@@ -93,9 +118,9 @@ class TestQuoteEndpoint:
 class TestHistoricalBarsEndpoint:
     """Tests for POST /market-data/historical."""
 
-    def test_historical_returns_503_when_not_connected(self, client):
+    def test_historical_returns_503_when_not_connected(self, client_disconnected):
         """Historical endpoint returns 503 when IBKR not connected."""
-        response = client.post(
+        response = client_disconnected.post(
             "/market-data/historical",
             json={
                 "symbol": "AAPL",
@@ -196,6 +221,16 @@ class TestMarketDataAuth:
         reset_config()
 
         from api.server import app
+        from api.dependencies import get_client_manager
+
+        # Create mock client manager
+        mock_manager = MagicMock()
+        mock_manager.is_connected = False
+        mock_manager.get_client = AsyncMock(
+            side_effect=IBKRConnectionError("IBKR Gateway not available")
+        )
+        app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
         test_client = TestClient(app)
 
         response = test_client.post(
@@ -211,6 +246,7 @@ class TestMarketDataAuth:
         assert response.status_code == 503
 
         os.environ.pop("API_KEY", None)
+        app.dependency_overrides.clear()
 
 
 # =============================================================================

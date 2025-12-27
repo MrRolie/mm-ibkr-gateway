@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ibkr_core.client import ConnectionError as IBKRConnectionError
+
 
 @pytest.fixture(autouse=True)
 def reset_env():
@@ -35,6 +37,29 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def client_disconnected():
+    """Create a test client with mocked IBKR client manager as disconnected."""
+    from api.server import app
+    from api.dependencies import get_client_manager
+
+    # Create mock client manager
+    mock_manager = MagicMock()
+    mock_manager.is_connected = False
+    mock_manager.get_client = AsyncMock(
+        side_effect=IBKRConnectionError("IBKR Gateway not available")
+    )
+
+    # Override the dependency
+    app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
+    client = TestClient(app)
+    yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 # =============================================================================
 # Account Summary Tests
 # =============================================================================
@@ -43,17 +68,17 @@ def client():
 class TestAccountSummaryEndpoint:
     """Tests for GET /account/summary."""
 
-    def test_summary_returns_503_when_not_connected(self, client):
+    def test_summary_returns_503_when_not_connected(self, client_disconnected):
         """Account summary returns 503 when IBKR not connected."""
-        response = client.get("/account/summary")
+        response = client_disconnected.get("/account/summary")
 
         assert response.status_code == 503
         data = response.json()
         assert data["error_code"] == "IBKR_CONNECTION_ERROR"
 
-    def test_summary_accepts_account_id_param(self, client):
+    def test_summary_accepts_account_id_param(self, client_disconnected):
         """Account summary should accept account_id query parameter."""
-        response = client.get("/account/summary?account_id=DU9999999")
+        response = client_disconnected.get("/account/summary?account_id=DU9999999")
 
         # Still fails due to no IBKR, but validates param is accepted
         assert response.status_code == 503
@@ -67,15 +92,15 @@ class TestAccountSummaryEndpoint:
 class TestPositionsEndpoint:
     """Tests for GET /account/positions."""
 
-    def test_positions_returns_503_when_not_connected(self, client):
+    def test_positions_returns_503_when_not_connected(self, client_disconnected):
         """Positions endpoint returns 503 when IBKR not connected."""
-        response = client.get("/account/positions")
+        response = client_disconnected.get("/account/positions")
 
         assert response.status_code == 503
 
-    def test_positions_accepts_account_id_param(self, client):
+    def test_positions_accepts_account_id_param(self, client_disconnected):
         """Positions should accept account_id query parameter."""
-        response = client.get("/account/positions?account_id=DU9999999")
+        response = client_disconnected.get("/account/positions?account_id=DU9999999")
 
         assert response.status_code == 503
 
@@ -88,15 +113,15 @@ class TestPositionsEndpoint:
 class TestPnlEndpoint:
     """Tests for GET /account/pnl."""
 
-    def test_pnl_returns_503_when_not_connected(self, client):
+    def test_pnl_returns_503_when_not_connected(self, client_disconnected):
         """P&L endpoint returns 503 when IBKR not connected."""
-        response = client.get("/account/pnl")
+        response = client_disconnected.get("/account/pnl")
 
         assert response.status_code == 503
 
-    def test_pnl_accepts_account_id_param(self, client):
+    def test_pnl_accepts_account_id_param(self, client_disconnected):
         """P&L should accept account_id query parameter."""
-        response = client.get("/account/pnl?account_id=DU9999999")
+        response = client_disconnected.get("/account/pnl?account_id=DU9999999")
 
         assert response.status_code == 503
 
@@ -133,6 +158,16 @@ class TestAccountAuth:
         reset_config()
 
         from api.server import app
+        from api.dependencies import get_client_manager
+
+        # Create mock client manager
+        mock_manager = MagicMock()
+        mock_manager.is_connected = False
+        mock_manager.get_client = AsyncMock(
+            side_effect=IBKRConnectionError("IBKR Gateway not available")
+        )
+        app.dependency_overrides[get_client_manager] = lambda: mock_manager
+
         test_client = TestClient(app)
 
         response = test_client.get(
@@ -144,6 +179,7 @@ class TestAccountAuth:
         assert response.status_code == 503
 
         os.environ.pop("API_KEY", None)
+        app.dependency_overrides.clear()
 
 
 # =============================================================================

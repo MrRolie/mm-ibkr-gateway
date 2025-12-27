@@ -296,17 +296,17 @@
 - [x] Add a proper Dockerfile and docker-compose demo setup for paper mode (one-command).
 - [x] Update README: "Quick Demo (paper-only)" with prerequisites and copy/paste commands.
 
-### Implementation Details
+### Implementation Details 6.1
 
-* Created `ibkr_core/demo.py` (361 lines):
-  * Market data demo: AAPL quote, SPY historical bars
-  * Account status demo: Summary and positions
-  * Forced paper mode validation
-  * Colorized ANSI output
-* Created `tests/test_demo.py` (220+ lines): 15 unit tests + 1 integration test
-* Created `docker-compose.demo.yml` for one-command demo
-* Added `ibkr-demo` console script entry point
-* Updated README with "Quick Demo (5 Minutes)" section
+- Created `ibkr_core/demo.py` (361 lines):
+  - Market data demo: AAPL quote, SPY historical bars
+  - Account status demo: Summary and positions
+  - Forced paper mode validation
+  - Colorized ANSI output
+- Created `tests/test_demo.py` (220+ lines): 15 unit tests + 1 integration test
+- Created `docker-compose.demo.yml` for one-command demo
+- Added `ibkr-demo` console script entry point
+- Updated README with "Quick Demo (5 Minutes)" section
 
 ## Phase 6.2 - Safety section (make it loud) ✅ COMPLETE
 
@@ -315,13 +315,13 @@
 - [x] Add "How to enable live trading (and why you probably should not)" with steps and warnings.
 - [x] Align `.env.example` and CLI/API docs with the safety messaging.
 
-### Implementation Details
+### Implementation Details 6.2
 
-* Updated `README.md`: Added prominent "⚠️ SAFETY FIRST ⚠️" section
-* Enhanced `.env.example`: Safety warnings and reorganized sections
-* Updated `api/API.md`: Added safety notice
-* Enhanced MCP tool descriptions: Added safety labels
-* Created `.context/SAFETY_CHECKLIST.md`: 200+ line comprehensive checklist
+- Updated `README.md`: Added prominent "⚠️ SAFETY FIRST ⚠️" section
+- Enhanced `.env.example`: Safety warnings and reorganized sections
+- Updated `api/API.md`: Added safety notice
+- Enhanced MCP tool descriptions: Added safety labels
+- Created `.context/SAFETY_CHECKLIST.md`: 200+ line comprehensive checklist
 
 ## Phase 6.3 - Minimal CLI (shareable interface) ✅ COMPLETE
 
@@ -330,16 +330,16 @@
 - [x] Add CLI flags: `--host`, `--port`, `--paper`, `--live`.
 - [x] Document CLI usage and examples in README.
 
-### Implementation Details
+### Implementation Details 6.3
 
-* Created `ibkr_core/cli.py` (343 lines):
-  * Built with Typer and Rich
-  * 4 commands: healthcheck, demo, start-api, version
-  * Global options with validation
-  * Rich formatted output
-* Created `tests/test_cli.py` (250+ lines): 18 unit tests + 2 integration tests
-* Added dependencies: `typer ^0.9.0`, `rich ^13.7`
-* Updated README with CLI documentation
+- Created `ibkr_core/cli.py` (343 lines):
+  - Built with Typer and Rich
+  - 4 commands: healthcheck, demo, start-api, version
+  - Global options with validation
+  - Rich formatted output
+- Created `tests/test_cli.py` (250+ lines): 18 unit tests + 2 integration tests
+- Added dependencies: `typer ^0.9.0`, `rich ^13.7`
+- Updated README with CLI documentation
 
 ## Phase 6.4 - Repo hygiene and trust signals ✅ COMPLETE
 
@@ -350,16 +350,16 @@
 - [x] Add `CHANGELOG.md` starting at `0.1.0`.
 - [x] Add `PULL_REQUEST_TEMPLATE.md`.
 
-### Implementation Details
+### Implementation Details 6.4
 
-* Created `LICENSE`: MIT License
-* Created `SECURITY.md`: Vulnerability reporting and response timeline
-* Created `CONTRIBUTING.md`: Dev setup, code style, testing, PR process
-* Created `CHANGELOG.md`: Keep a Changelog format, v0.1.0
-* Created GitHub templates:
-  * `.github/ISSUE_TEMPLATE/bug_report.yml`
-  * `.github/ISSUE_TEMPLATE/feature_request.yml`
-  * `.github/PULL_REQUEST_TEMPLATE.md`
+- Created `LICENSE`: MIT License
+- Created `SECURITY.md`: Vulnerability reporting and response timeline
+- Created `CONTRIBUTING.md`: Dev setup, code style, testing, PR process
+- Created `CHANGELOG.md`: Keep a Changelog format, v0.1.0
+- Created GitHub templates:
+  - `.github/ISSUE_TEMPLATE/bug_report.yml`
+  - `.github/ISSUE_TEMPLATE/feature_request.yml`
+  - `.github/PULL_REQUEST_TEMPLATE.md`
 
 ## Phase 6.5 - CI + coverage (credibility) ✅ COMPLETE
 
@@ -369,21 +369,21 @@
 - [x] Add coverage badge to README (Codecov).
 - [x] Add pre-commit hooks configuration.
 
-### Implementation Details
+### Implementation Details 6.5
 
-* Created `.github/workflows/ci.yml`:
-  * Lint job: black, isort, flake8, mypy
-  * Test job: Python 3.10, 3.11, 3.12
-  * Coverage: Codecov upload
-  * Security: safety, bandit
-* Created coverage configuration:
-  * `.coveragerc`: Exclusions and HTML output
-  * `codecov.yml`: 80% project, 70% patch targets
-  * `pyproject.toml`: Coverage config
-* Created `.pre-commit-config.yaml`: Pre-commit hooks
-* Added dev dependencies: `safety ^2.3`, `bandit ^1.7`, `pre-commit ^3.6`
-* Updated README: Badges and "Development & Testing" section
-* Test results: 385/428 unit tests passing (90%)
+- Created `.github/workflows/ci.yml`:
+  - Lint job: black, isort, flake8, mypy
+  - Test job: Python 3.10, 3.11, 3.12
+  - Coverage: Codecov upload
+  - Security: safety, bandit
+- Created coverage configuration:
+  - `.coveragerc`: Exclusions and HTML output
+  - `codecov.yml`: 80% project, 70% patch targets
+  - `pyproject.toml`: Coverage config
+- Created `.pre-commit-config.yaml`: Pre-commit hooks
+- Added dev dependencies: `safety ^2.3`, `bandit ^1.7`, `pre-commit ^3.6`
+- Updated README: Badges and "Development & Testing" section
+- Test results: 385/428 unit tests passing (90%)
 
 ## Phase 7 – NL layer and agent
 
