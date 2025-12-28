@@ -222,8 +222,8 @@ ibkr-gateway --live healthcheck
 | Phase 4 | Order placement and management | ✅ Complete |
 | Phase 5 | FastAPI REST layer | ✅ Complete |
 | Phase 6 | MCP server for Claude integration | ✅ Complete |
-| Phase 7 | Natural language agent layer | Planned |
-| Phase 8 | Monitoring, simulation, persistence | Planned |
+| Phase 7 | Natural language agent layer | ⏭️ Skipped |
+| Phase 8 | Monitoring, simulation, persistence | ✅ Complete |
 
 ## Three Ways to Use
 
@@ -271,6 +271,7 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000
 | Method | Endpoint | Description |
 | -------- | --------- | ------------- |
 | GET | `/health` | Health check and connection status |
+| GET | `/metrics` | Application metrics (counters, histograms, gauges) |
 | POST | `/market-data/quote` | Get market quote |
 | POST | `/market-data/historical` | Get historical bars |
 | GET | `/account/summary` | Get account summary |
@@ -455,44 +456,109 @@ pip install -e .
 
 ---
 
+## Monitoring & Observability
+
+### Structured Logging
+
+All logs include correlation IDs for request tracing:
+
+```json
+{"correlation_id": "abc-123", "message": "Order placed", "symbol": "AAPL", "status": "success"}
+```
+
+Configure via environment:
+```bash
+LOG_LEVEL=DEBUG    # DEBUG, INFO, WARNING, ERROR
+LOG_FORMAT=text    # json (default) or text for development
+```
+
+### Metrics Endpoint
+
+Access application metrics at `GET /metrics`:
+
+```bash
+curl http://localhost:8000/metrics | jq
+```
+
+Returns counters, histograms (with p50/p90/p95/p99), and gauges for:
+- API request counts and latencies by endpoint
+- IBKR operation metrics (connect, disconnect, errors)
+- Connection status gauges
+
+### Audit Database
+
+All order events are persisted to SQLite for compliance and debugging:
+
+```bash
+# Query recent audit events
+python scripts/query_audit_log.py --limit 20 -v
+
+# Export order history to CSV
+python scripts/export_order_history.py --output orders.csv
+
+# Filter by account
+python scripts/query_audit_log.py --account DU12345
+```
+
+### Simulation Mode
+
+Test without IBKR Gateway using the simulated client:
+
+```bash
+# Enable simulation mode
+export IBKR_MODE=simulation
+
+# All operations use synthetic data
+python -m ibkr_core.cli quote AAPL  # Returns simulated quote
+```
+
+Useful for: unit tests, CI/CD pipelines, development without market data subscriptions.
+
+---
+
 ## Project Structure
 
 ```text
 mm-ibkr-gateway/
-├── ibkr_core/              # Core IBKR integration (Phases 0-4)
+├── ibkr_core/              # Core IBKR integration
 │   ├── client.py           # Connection wrapper
 │   ├── config.py           # Environment & safety config
 │   ├── contracts.py        # Contract resolution
 │   ├── market_data.py      # Quotes & historical data
 │   ├── account.py          # Account status & positions
 │   ├── orders.py           # Order placement
-│   └── models.py           # Pydantic models
+│   ├── models.py           # Pydantic models
+│   ├── persistence.py      # SQLite audit database (Phase 8)
+│   ├── metrics.py          # In-memory metrics (Phase 8)
+│   ├── simulation.py       # Simulated client (Phase 8)
+│   └── logging_config.py   # Structured logging (Phase 8)
 │
-├── api/                    # FastAPI REST layer (Phase 5)
+├── api/                    # FastAPI REST layer
 │   ├── server.py           # Endpoint definitions
 │   ├── models.py           # HTTP request/response models
+│   ├── middleware.py       # Correlation ID middleware
 │   ├── auth.py             # API key authentication
 │   ├── dependencies.py     # FastAPI dependencies
 │   └── errors.py           # Error handling
 │
-├── mcp_server/             # MCP server (Phase 6)
-│   ├── main.py             # 8 MCP tools
+├── mcp_server/             # MCP server for Claude
+│   ├── main.py             # MCP tools
 │   ├── config.py           # MCP configuration
 │   ├── http_client.py      # Async HTTP client
 │   └── errors.py           # Error translation
 │
-├── tests/                  # 100+ tests
-│   ├── test_mcp_tools.py   # MCP tool tests
-│   ├── test_mcp_errors.py  # Error handling tests
-│   ├── test_api_*.py       # API endpoint tests
-│   └── test_*.py           # Core module tests
+├── scripts/                # Utility scripts
+│   ├── query_audit_log.py  # Query audit database
+│   └── export_order_history.py  # Export to CSV/JSON
+│
+├── tests/                  # 500+ tests
+│   ├── test_simulation_*.py    # Simulation tests
+│   ├── test_metrics_*.py       # Metrics tests
+│   ├── test_persistence_*.py   # Audit DB tests
+│   └── test_*.py               # Core module tests
 │
 ├── .context/               # Design documentation
-│   ├── PHASE_PLAN.md       # Implementation roadmap
-│   ├── SCHEMAS.md          # JSON Schema definitions
-│   ├── ARCH_NOTES.md       # Architecture decisions
-│   └── TODO_BACKLOG.md     # Task tracking
-│
+├── .agent_context/         # Agent onboarding docs
 └── .env.example            # Configuration template
 ```
 
@@ -571,6 +637,10 @@ Integration tests run manually due to IBKR connection requirements.
 | `API_PORT` | `8000` | FastAPI server port |
 | `IBKR_API_URL` | `http://localhost:8000` | REST API URL (for MCP server) |
 | `MCP_REQUEST_TIMEOUT` | `60` | MCP request timeout in seconds |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `LOG_FORMAT` | `json` | Log format (`json` or `text`) |
+| `AUDIT_DB_PATH` | `./data/audit.db` | SQLite audit database path |
+| `IBKR_MODE` | (none) | Override to `simulation` for testing without gateway |
 
 ---
 
