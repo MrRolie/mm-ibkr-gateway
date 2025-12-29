@@ -31,7 +31,6 @@ from ibkr_core.logging_config import (
     set_correlation_id,
 )
 
-
 # =============================================================================
 # Unit Tests - Correlation ID Context
 # =============================================================================
@@ -285,9 +284,7 @@ class TestCorrelationIdEndToEnd:
         """Test that client can provide their own correlation ID."""
         my_correlation_id = str(uuid.uuid4())
 
-        response = self.client.get(
-            "/users/456", headers={"X-Correlation-ID": my_correlation_id}
-        )
+        response = self.client.get("/users/456", headers={"X-Correlation-ID": my_correlation_id})
 
         assert response.status_code == 200
         assert response.headers["X-Correlation-ID"] == my_correlation_id

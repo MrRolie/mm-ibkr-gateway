@@ -166,9 +166,7 @@ class MetricsCollector:
         return tuple(sorted(labels.items()))
 
     # Counter operations
-    def counter_inc(
-        self, name: str, amount: int = 1, labels: dict | None = None
-    ) -> None:
+    def counter_inc(self, name: str, amount: int = 1, labels: dict | None = None) -> None:
         """Increment a counter."""
         key = self._labels_to_key(labels)
         with self._counter_lock:
@@ -187,9 +185,7 @@ class MetricsCollector:
             return self._counters[name][key].get()
 
     # Histogram operations
-    def histogram_observe(
-        self, name: str, value: float, labels: dict | None = None
-    ) -> None:
+    def histogram_observe(self, name: str, value: float, labels: dict | None = None) -> None:
         """Record a histogram observation."""
         key = self._labels_to_key(labels)
         with self._histogram_lock:
@@ -216,9 +212,7 @@ class MetricsCollector:
                 self._gauges[name][key] = Gauge()
         self._gauges[name][key].set(value)
 
-    def gauge_inc(
-        self, name: str, amount: float = 1.0, labels: dict | None = None
-    ) -> None:
+    def gauge_inc(self, name: str, amount: float = 1.0, labels: dict | None = None) -> None:
         """Increment a gauge."""
         key = self._labels_to_key(labels)
         with self._gauge_lock:
@@ -226,9 +220,7 @@ class MetricsCollector:
                 self._gauges[name][key] = Gauge()
         self._gauges[name][key].inc(amount)
 
-    def gauge_dec(
-        self, name: str, amount: float = 1.0, labels: dict | None = None
-    ) -> None:
+    def gauge_dec(self, name: str, amount: float = 1.0, labels: dict | None = None) -> None:
         """Decrement a gauge."""
         key = self._labels_to_key(labels)
         with self._gauge_lock:
@@ -334,9 +326,7 @@ def record_api_request(
     )
 
 
-def record_ibkr_operation(
-    operation: str, status: str, duration_seconds: float
-) -> None:
+def record_ibkr_operation(operation: str, status: str, duration_seconds: float) -> None:
     """Record an IBKR operation metric."""
     metrics = get_metrics()
     labels = {"operation": operation, "status": status}

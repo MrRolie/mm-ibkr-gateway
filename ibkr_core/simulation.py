@@ -15,9 +15,10 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ibkr_core.client import IBKRClient
 from ibkr_core.config import Config, get_config
 from ibkr_core.metrics import record_ibkr_operation, set_connection_status
 
@@ -240,9 +241,7 @@ class SimulatedIBKRClient:
                 self._quote_cache[symbol] = self._generate_quote(symbol)
             else:
                 # Update with small price movement
-                self._quote_cache[symbol] = self._update_quote(
-                    self._quote_cache[symbol]
-                )
+                self._quote_cache[symbol] = self._update_quote(self._quote_cache[symbol])
             return self._quote_cache[symbol]
 
     def _generate_quote(self, symbol: str) -> SimulatedQuote:
@@ -394,11 +393,7 @@ class SimulatedIBKRClient:
     def get_open_orders(self) -> List[SimulatedOrder]:
         """Get all open (non-filled, non-cancelled) orders."""
         with self._order_lock:
-            return [
-                o
-                for o in self._orders.values()
-                if o.status not in ("Filled", "Cancelled")
-            ]
+            return [o for o in self._orders.values() if o.status not in ("Filled", "Cancelled")]
 
     def get_all_orders(self) -> List[SimulatedOrder]:
         """Get all orders in the registry."""
@@ -456,7 +451,7 @@ class SimulatedIB:
 def get_ibkr_client(
     mode: Optional[str] = None,
     client_id: Optional[int] = None,
-) -> "IBKRClient | SimulatedIBKRClient":
+) -> IBKRClient | SimulatedIBKRClient:
     """
     Get an IBKR client based on mode.
 
@@ -468,8 +463,6 @@ def get_ibkr_client(
         IBKRClient for paper/live modes, SimulatedIBKRClient for simulation.
     """
     import os
-
-    from ibkr_core.client import IBKRClient
 
     if mode is None:
         mode = os.environ.get("IBKR_MODE", "").lower()

@@ -74,7 +74,7 @@ def get_db_connection(db_path: Optional[str] = None):
     try:
         yield conn
         conn.commit()
-    except Exception as e:
+    except Exception:
         conn.rollback()
         raise
     finally:

@@ -141,14 +141,18 @@ def main():
     recent_events = query_audit_log(limit=10)
     for event in recent_events:
         corr = event.get("correlation_id", "N/A")[:16] if event.get("correlation_id") else "N/A"
-        print(f"  [{event['timestamp']}] {event['event_type']} (acct: {event.get('account_id', 'N/A')}, corr: {corr})")
+        print(
+            f"  [{event['timestamp']}] {event['event_type']} (acct: {event.get('account_id', 'N/A')}, corr: {corr})"
+        )
 
     # Query order history
     print(f"\nOrder history for account {account_id}:")
     orders = query_orders(account_id=account_id, limit=5)
     if orders:
         for order in orders:
-            print(f"  [{order['placed_at']}] {order['side']} {order['quantity']} {order['symbol']} @ {order['order_type']}")
+            print(
+                f"  [{order['placed_at']}] {order['side']} {order['quantity']} {order['symbol']} @ {order['order_type']}"
+            )
             print(f"    Status: {order['status']}, Order ID: {order['order_id']}")
     else:
         print("  No orders found")

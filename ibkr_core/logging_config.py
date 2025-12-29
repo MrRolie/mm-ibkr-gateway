@@ -195,9 +195,7 @@ def configure_logging(
 
     # Log configuration complete
     logger = logging.getLogger(__name__)
-    logger.info(
-        f"Logging configured: level={logging.getLevelName(level)}, format={format_type}"
-    )
+    logger.info(f"Logging configured: level={logging.getLevelName(level)}, format={format_type}")
 
 
 # =============================================================================

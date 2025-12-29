@@ -5,8 +5,9 @@ Verifies that SimulatedIBKRClient correctly simulates order
 submission, state transitions, fills, and cancellations.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from ibkr_core.simulation import SimulatedIBKRClient, SimulatedOrder
 
@@ -73,9 +74,7 @@ class TestOrderSubmission:
         assert order.account_id == "SIM000001"
 
     def test_submit_order_with_custom_account(self, client):
-        order = client.submit_order(
-            "AAPL", "BUY", 1, "MKT", account_id="CUSTOM123"
-        )
+        order = client.submit_order("AAPL", "BUY", 1, "MKT", account_id="CUSTOM123")
         assert order.account_id == "CUSTOM123"
 
     def test_submit_order_when_disconnected(self):
@@ -181,9 +180,7 @@ class TestLimitOrderFills:
         # Set limit price above ask - should fill
         limit_price = quote.ask * 1.10
 
-        order = client.submit_order(
-            "AAPL", "BUY", 10, "LMT", limit_price=limit_price
-        )
+        order = client.submit_order("AAPL", "BUY", 10, "LMT", limit_price=limit_price)
 
         assert order.status == "Filled"
         assert order.fill_price <= limit_price
@@ -193,9 +190,7 @@ class TestLimitOrderFills:
         # Set limit price well below current price
         limit_price = quote.bid * 0.80
 
-        order = client.submit_order(
-            "AAPL", "BUY", 10, "LMT", limit_price=limit_price
-        )
+        order = client.submit_order("AAPL", "BUY", 10, "LMT", limit_price=limit_price)
 
         # Order should not fill immediately
         assert order.status == "Submitted"
@@ -206,9 +201,7 @@ class TestLimitOrderFills:
         # Set limit price below bid - should fill
         limit_price = quote.bid * 0.90
 
-        order = client.submit_order(
-            "AAPL", "SELL", 10, "LMT", limit_price=limit_price
-        )
+        order = client.submit_order("AAPL", "SELL", 10, "LMT", limit_price=limit_price)
 
         assert order.status == "Filled"
         assert order.fill_price >= limit_price
@@ -218,9 +211,7 @@ class TestLimitOrderFills:
         # Set limit price well above current price
         limit_price = quote.ask * 1.20
 
-        order = client.submit_order(
-            "AAPL", "SELL", 10, "LMT", limit_price=limit_price
-        )
+        order = client.submit_order("AAPL", "SELL", 10, "LMT", limit_price=limit_price)
 
         assert order.status == "Submitted"
         assert order.filled_quantity == 0
@@ -239,9 +230,7 @@ class TestOrderCancellation:
     def test_cancel_open_order(self, client):
         quote = client.get_quote("AAPL")
         # Create order that won't fill
-        order = client.submit_order(
-            "AAPL", "BUY", 10, "LMT", limit_price=quote.bid * 0.50
-        )
+        order = client.submit_order("AAPL", "BUY", 10, "LMT", limit_price=quote.bid * 0.50)
         assert order.status == "Submitted"
 
         result = client.cancel_order(order.order_id)
@@ -259,9 +248,7 @@ class TestOrderCancellation:
 
     def test_cancel_already_cancelled_order_fails(self, client):
         quote = client.get_quote("AAPL")
-        order = client.submit_order(
-            "AAPL", "BUY", 10, "LMT", limit_price=quote.bid * 0.50
-        )
+        order = client.submit_order("AAPL", "BUY", 10, "LMT", limit_price=quote.bid * 0.50)
 
         client.cancel_order(order.order_id)
         result = client.cancel_order(order.order_id)
@@ -301,12 +288,8 @@ class TestOrderRegistry:
         client.submit_order("AAPL", "BUY", 1, "MKT")
 
         # Create two open orders
-        client.submit_order(
-            "AAPL", "BUY", 1, "LMT", limit_price=quote.bid * 0.50
-        )
-        client.submit_order(
-            "MSFT", "SELL", 1, "LMT", limit_price=quote.ask * 2.0
-        )
+        client.submit_order("AAPL", "BUY", 1, "LMT", limit_price=quote.bid * 0.50)
+        client.submit_order("MSFT", "SELL", 1, "LMT", limit_price=quote.ask * 2.0)
 
         open_orders = client.get_open_orders()
         assert len(open_orders) == 2
@@ -363,9 +346,7 @@ class TestOrderTimestamps:
 
     def test_cancelled_order_updated_at_changes(self, client):
         quote = client.get_quote("AAPL")
-        order = client.submit_order(
-            "AAPL", "BUY", 1, "LMT", limit_price=quote.bid * 0.50
-        )
+        order = client.submit_order("AAPL", "BUY", 1, "LMT", limit_price=quote.bid * 0.50)
         created = order.created_at
 
         client.cancel_order(order.order_id)

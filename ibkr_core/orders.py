@@ -22,7 +22,6 @@ from ib_insync import LimitOrder, MarketOrder, Order, StopLimitOrder, StopOrder,
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
 from ibkr_core.contracts import resolve_contract
-from ibkr_core.logging_config import get_correlation_id, log_with_context
 from ibkr_core.market_data import get_quote
 from ibkr_core.models import (
     CancelResult,
@@ -1035,7 +1034,9 @@ def place_order(
             # Save to order history database
             save_order(
                 order_id=order_id,
-                account_id=order_spec.accountId or client.managed_accounts[0] if client.managed_accounts else "UNKNOWN",
+                account_id=order_spec.accountId or client.managed_accounts[0]
+                if client.managed_accounts
+                else "UNKNOWN",
                 symbol=symbol,
                 side=order_spec.side,
                 quantity=order_spec.quantity,
@@ -1044,7 +1045,6 @@ def place_order(
                 ibkr_order_id=str(trade.order.orderId) if trade.order.orderId else None,
                 preview_data=preview.model_dump() if preview else None,
                 config_snapshot=config_snapshot,
-                market_snapshot={"quote": quote.model_dump()} if 'quote' in locals() else None,
             )
 
             # Record audit event
@@ -1060,7 +1060,9 @@ def place_order(
                     "status": order_status.status,
                     "result_status": result_status,
                 },
-                account_id=order_spec.accountId or client.managed_accounts[0] if client.managed_accounts else None,
+                account_id=order_spec.accountId or client.managed_accounts[0]
+                if client.managed_accounts
+                else None,
             )
         except Exception as e:
             logger.warning(f"Failed to record order placement in audit: {e}")

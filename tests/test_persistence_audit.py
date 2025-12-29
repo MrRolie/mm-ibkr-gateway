@@ -258,14 +258,10 @@ class TestDatabaseInitialization:
         cursor = conn.cursor()
 
         # Check tables exist
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'"
-        )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'")
         assert cursor.fetchone() is not None
 
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='order_history'"
-        )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='order_history'")
         assert cursor.fetchone() is not None
 
         cursor.execute(

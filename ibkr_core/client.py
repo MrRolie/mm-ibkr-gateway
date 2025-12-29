@@ -16,7 +16,7 @@ from typing import List, Optional
 from ib_insync import IB
 
 from ibkr_core.config import Config, get_config
-from ibkr_core.logging_config import get_correlation_id, log_with_context
+from ibkr_core.logging_config import log_with_context
 from ibkr_core.metrics import record_ibkr_operation, set_connection_status
 
 logger = logging.getLogger(__name__)

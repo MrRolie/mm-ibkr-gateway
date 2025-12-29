@@ -16,14 +16,12 @@ Usage:
 
 import asyncio
 import logging
-import os
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, Path
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.auth import verify_api_key
-from api.middleware import CorrelationIdMiddleware
 from api.dependencies import (
     IBKRClientManager,
     RequestContext,
@@ -42,6 +40,7 @@ from api.errors import (
     general_exception_handler,
     map_ibkr_exception,
 )
+from api.middleware import CorrelationIdMiddleware
 from api.models import (
     AccountPnl,
     AccountSummary,

@@ -22,12 +22,7 @@ from fastapi import Request
 from ibkr_core.client import ConnectionError as IBKRConnectionError
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
-from ibkr_core.logging_config import (
-    clear_correlation_id,
-    get_correlation_id,
-    log_with_context,
-    set_correlation_id,
-)
+from ibkr_core.logging_config import clear_correlation_id, log_with_context, set_correlation_id
 
 logger = logging.getLogger(__name__)
 

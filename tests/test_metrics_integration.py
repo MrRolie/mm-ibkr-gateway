@@ -171,17 +171,13 @@ class TestOrderMetricsIntegration:
         metrics = get_metrics()
 
         # Check AAPL histogram
-        aapl_stats = metrics.histogram_get(
-            "order_time_to_fill_seconds", labels={"symbol": "AAPL"}
-        )
+        aapl_stats = metrics.histogram_get("order_time_to_fill_seconds", labels={"symbol": "AAPL"})
         assert aapl_stats["count"] == 2
         assert aapl_stats["min"] == 1.0
         assert aapl_stats["max"] == 2.0
 
         # Check MSFT histogram
-        msft_stats = metrics.histogram_get(
-            "order_time_to_fill_seconds", labels={"symbol": "MSFT"}
-        )
+        msft_stats = metrics.histogram_get("order_time_to_fill_seconds", labels={"symbol": "MSFT"})
         assert msft_stats["count"] == 1
 
     def test_active_orders_gauge(self):

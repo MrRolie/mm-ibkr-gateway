@@ -5,13 +5,14 @@ Verifies the simulated client provides the same interface as IBKRClient
 and produces consistent, realistic simulated data.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from ibkr_core.simulation import (
     SimulatedIBKRClient,
-    SimulatedQuote,
     SimulatedOrder,
+    SimulatedQuote,
     get_ibkr_client,
 )
 

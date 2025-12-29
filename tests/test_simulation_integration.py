@@ -5,8 +5,9 @@ Verifies that the API works correctly when using the simulated
 IBKR client, allowing full integration testing without a live gateway.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from ibkr_core.simulation import SimulatedIBKRClient, SimulatedQuote
 
@@ -224,22 +225,13 @@ class TestSimulationMetrics:
 
         metrics = get_metrics()
         # Initially disconnected
-        assert (
-            metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"})
-            == 0.0
-        )
+        assert metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"}) == 0.0
 
         client.connect()
-        assert (
-            metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"})
-            == 1.0
-        )
+        assert metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"}) == 1.0
 
         client.disconnect()
-        assert (
-            metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"})
-            == 0.0
-        )
+        assert metrics.gauge_get("ibkr_connection_status", labels={"mode": "simulation"}) == 0.0
 
 
 class TestSimulationThreadSafety:
