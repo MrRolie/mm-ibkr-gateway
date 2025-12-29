@@ -47,7 +47,6 @@ packages = [
     {include = "api"},
     {include = "ibkr_core"},
     {include = "mcp_server"},
-    {include = "nl"},
     {include = "scripts"}
 ]
 
