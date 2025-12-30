@@ -58,6 +58,7 @@ from api.models import (
     QuoteRequest,
 )
 from ibkr_core.config import get_config
+from ibkr_core.schedule import get_window_status
 from ibkr_core.logging_config import configure_logging
 from ibkr_core.metrics import get_metrics
 
@@ -225,6 +226,28 @@ async def health_check(
         trading_mode=config.trading_mode,
         orders_enabled=config.orders_enabled,
     )
+
+
+# =============================================================================
+# Schedule Endpoint
+# =============================================================================
+
+
+@app.get(
+    "/schedule",
+    tags=["Health"],
+    summary="Get schedule status",
+    description="Check if services are within the configured run window",
+)
+async def schedule_status():
+    """
+    Schedule status endpoint.
+
+    Returns the current schedule configuration and whether we're
+    within the run window. Useful for the Pi to check if the 
+    execution node should be active.
+    """
+    return get_window_status()
 
 
 # =============================================================================

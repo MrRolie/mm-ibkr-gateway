@@ -48,7 +48,15 @@ class Config:
 
     # API Server
     api_port: int
+    api_bind_host: str
     log_level: str
+
+    # Path settings
+    gdrive_base_path: Optional[str]
+    log_file_path: Optional[str]
+    
+    # Arm file for orders (additional safety layer)
+    arm_orders_file: Optional[str]
 
     # Override file for live trading (for extra safety)
     live_trading_override_file: Optional[str]
@@ -133,7 +141,15 @@ def load_config() -> Config:
     except ValueError:
         raise InvalidConfigError("API_PORT must be an integer")
 
+    # API bind host (for LAN access)
+    api_bind_host = os.getenv("API_BIND_HOST", "127.0.0.1")
+
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    # Path settings
+    gdrive_base_path = os.getenv("GDRIVE_BASE_PATH")
+    log_file_path = os.getenv("LOG_FILE_PATH")
+    arm_orders_file = os.getenv("ARM_ORDERS_FILE")
 
     # Live Trading Override
     live_trading_override_file = os.getenv("LIVE_TRADING_OVERRIDE_FILE")
@@ -147,7 +163,11 @@ def load_config() -> Config:
         trading_mode=trading_mode,
         orders_enabled=orders_enabled,
         api_port=api_port,
+        api_bind_host=api_bind_host,
         log_level=log_level,
+        gdrive_base_path=gdrive_base_path,
+        log_file_path=log_file_path,
+        arm_orders_file=arm_orders_file,
         live_trading_override_file=live_trading_override_file,
     )
 

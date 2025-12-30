@@ -4,6 +4,14 @@
 .benchmarks/
 data/
 
+# Secrets and credentials
+secrets/
+*.pem
+*.key
+
+# IBKR configuration (contains credentials)
+jts.ini
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

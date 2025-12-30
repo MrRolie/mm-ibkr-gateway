@@ -253,7 +253,7 @@ def demo(
 def start_api(
     port: int = typer.Option(8000, "--port", "-p", help="API server port"),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
-    host: str = typer.Option("0.0.0.0", "--host", help="Bind host"),
+    host: str = typer.Option(None, "--host", help="Bind host (default: from API_BIND_HOST env or 127.0.0.1)"),
 ):
     """
     Start the FastAPI REST server.
@@ -269,6 +269,12 @@ def start_api(
     The server will be available at http://localhost:8000 (or your specified port).
     API documentation is available at http://localhost:8000/docs
     """
+    import os
+    
+    # Use API_BIND_HOST from env if host not specified
+    if host is None:
+        host = os.getenv("API_BIND_HOST", "127.0.0.1")
+    
     console.print("\n[bold cyan]Starting IBKR Gateway API Server[/bold cyan]\n")
 
     # Display configuration
