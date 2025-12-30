@@ -30,7 +30,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Write-Host "`n=== Starting IBKR Gateway ===" -ForegroundColor Cyan
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Check time window unless forced
 if (-not $Force) {

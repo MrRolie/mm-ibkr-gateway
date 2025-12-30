@@ -22,7 +22,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 . (Join-Path $ScriptDir "lib\common.ps1")
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 Write-Log "Boot reconciliation started" "INFO"
 

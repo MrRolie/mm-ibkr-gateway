@@ -28,7 +28,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Write-Host "`n=== Stopping IBKR Gateway ===" -ForegroundColor Cyan
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Find gateway process
 $gatewayProcesses = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue

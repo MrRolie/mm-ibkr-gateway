@@ -43,7 +43,7 @@ if (-not (Test-IsAdmin)) {
 }
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Get configuration
 $apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }

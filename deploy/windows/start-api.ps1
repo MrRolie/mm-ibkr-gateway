@@ -30,7 +30,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Write-Host "`n=== Starting mm-ibkr-gateway API ===" -ForegroundColor Cyan
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Check time window unless forced
 if (-not $Force) {
@@ -177,6 +177,10 @@ try {
     exit 1
 } finally {
     Pop-Location
+    
+    # Cleanup event handlers
+    if ($outEvent) { Unregister-Event -SourceIdentifier $outEvent.Name -ErrorAction SilentlyContinue }
+    if ($errEvent) { Unregister-Event -SourceIdentifier $errEvent.Name -ErrorAction SilentlyContinue }
 }
 
 # Log startup

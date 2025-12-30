@@ -44,7 +44,7 @@ if (-not (Test-IsAdmin)) {
 }
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Determine task user
 if (-not $TaskUser) {

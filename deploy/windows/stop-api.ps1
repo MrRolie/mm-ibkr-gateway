@@ -28,7 +28,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Write-Host "`n=== Stopping mm-ibkr-gateway API ===" -ForegroundColor Cyan
 
 # Load environment
-Load-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
+Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Get API port
 $apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
@@ -86,37 +86,37 @@ if ($pidsToKill.Count -eq 0) {
 
 Write-Host "Found $($pidsToKill.Count) process(es) to stop" -ForegroundColor Gray
 
-foreach ($pid in $pidsToKill) {
+foreach ($processId in $pidsToKill) {
     try {
-        $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if ($process) {
-            Write-Host "Stopping process $pid ($($process.ProcessName))..." -ForegroundColor Gray
+            Write-Host "Stopping process $processId ($($process.ProcessName))..." -ForegroundColor Gray
             
             # Try graceful termination
-            Stop-Process -Id $pid -ErrorAction SilentlyContinue
+            Stop-Process -Id $processId -ErrorAction SilentlyContinue
             
             # Wait for exit
             $waitCount = 0
-            while ((Get-Process -Id $pid -ErrorAction SilentlyContinue) -and $waitCount -lt 10) {
+            while ((Get-Process -Id $processId -ErrorAction SilentlyContinue) -and $waitCount -lt 10) {
                 Start-Sleep -Milliseconds 500
                 $waitCount++
             }
             
             # Force if still running and -Force specified
-            $stillRunning = Get-Process -Id $pid -ErrorAction SilentlyContinue
+            $stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
             if ($stillRunning) {
                 if ($Force) {
-                    Write-Host "Force killing process $pid..." -ForegroundColor Yellow
-                    Stop-Process -Id $pid -Force
+                    Write-Host "Force killing process $processId..." -ForegroundColor Yellow
+                    Stop-Process -Id $processId -Force
                 } else {
-                    Write-Host "Process $pid still running. Use -Force to kill." -ForegroundColor Yellow
+                    Write-Host "Process $processId still running. Use -Force to kill." -ForegroundColor Yellow
                 }
             } else {
-                Write-Host "Process $pid stopped" -ForegroundColor Green
+                Write-Host "Process $processId stopped" -ForegroundColor Green
             }
         }
     } catch {
-        Write-Host "Error stopping process $pid : $_" -ForegroundColor Yellow
+        Write-Host "Error stopping process $processId : $_" -ForegroundColor Yellow
     }
 }
 
