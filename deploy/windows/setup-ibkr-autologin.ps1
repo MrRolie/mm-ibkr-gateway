@@ -12,6 +12,9 @@
 .PARAMETER Password
     IBKR paper trading password.
 
+.PARAMETER ApplyToInstallPath
+    Also write jts.ini into the Gateway install folder (some versions read from there).
+
 .EXAMPLE
     .\setup-ibkr-autologin.ps1
     .\setup-ibkr-autologin.ps1 -Username "myuser" -Password "mypass"
@@ -21,7 +24,8 @@
 param(
     [string]$Username,
     [string]$Password,
-    [string]$GatewayPath
+    [string]$GatewayPath,
+    [switch]$ApplyToInstallPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -111,6 +115,7 @@ if (-not $Username -or -not $Password) {
 
 # Create jts.ini content for paper trading auto-login
 # Note: IBKR Gateway uses specific settings for auto-login
+$gatewayPort = if ($env:PAPER_GATEWAY_PORT) { $env:PAPER_GATEWAY_PORT } else { "4002" }
 $jtsContent = @"
 [IBGateway]
 # Auto-login configuration for paper trading
@@ -122,6 +127,8 @@ tradingMode=1
 # Auto-login settings
 s3store=true
 ApiOnly=true
+useRemoteSettings=false
+StoreSettingsOnServer=false
 
 # Paper account credentials
 PaperLogin=$Username
@@ -133,18 +140,22 @@ UseSSL=true
 AcceptIncomingConnectionAction=accept
 AcceptNonBrokerageAccountWarning=true
 ExistingSessionDetectedAction=primary
+TrustedIPs=127.0.0.1
 
 # API settings
-LocalServerPort=4002
+LocalServerPort=$gatewayPort
 ActiveLocale=en
 UseGUITrust=false
 
 [Logon]
 # Use paper trading login
 usePaperTrading=1
+useRemoteSettings=false
 Displayed=1
 displayedpw=1
 s3store=true
+Locale=en
+TradingMode=p
 
 [Communication]
 # Allow API connections
@@ -165,6 +176,18 @@ if (Test-Path $JtsIniPath) {
 # Write jts.ini
 Set-Content -Path $JtsIniPath -Value $jtsContent -Encoding UTF8
 Write-Host "Created jts.ini at: $JtsIniPath" -ForegroundColor Green
+
+# Optionally also write to the Gateway install directory (some versions read from there)
+if ($ApplyToInstallPath) {
+    $installIniPath = Join-Path $GatewayPath "jts.ini"
+    if (Test-Path $installIniPath) {
+        $backupInstall = "$installIniPath.backup.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        Copy-Item $installIniPath $backupInstall -ErrorAction SilentlyContinue
+        Write-Host "Backed up install jts.ini to: $backupInstall" -ForegroundColor Gray
+    }
+    Set-Content -Path $installIniPath -Value $jtsContent -Encoding UTF8
+    Write-Host "Applied jts.ini to install path: $installIniPath" -ForegroundColor Green
+}
 
 # Security warning
 Write-Host "`n=== SECURITY WARNING ===" -ForegroundColor Yellow

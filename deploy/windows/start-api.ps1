@@ -152,10 +152,18 @@ try {
     
     Write-Host "API server started (PID: $($process.Id))" -ForegroundColor Green
     
-    # Wait a moment and verify it's running
-    Start-Sleep -Seconds 3
+    # Wait and verify it's running
+    $timeout = 20
+    $interval = 2
+    $waited = 0
+    $listening = $null
+    while ($waited -lt $timeout) {
+        $listening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
+        if ($listening) { break }
+        Start-Sleep -Seconds $interval
+        $waited += $interval
+    }
     
-    $listening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
     if ($listening) {
         Write-Host "API is listening on ${bindHost}:${apiPort}" -ForegroundColor Green
         
@@ -168,7 +176,7 @@ try {
             Write-Host "Health check pending (server still starting)" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "WARNING: API started but not yet listening on port $apiPort" -ForegroundColor Yellow
+        Write-Host "WARNING: API started but not yet listening on port $apiPort after ${timeout}s" -ForegroundColor Yellow
         Write-Host "Check logs: $apiLogFile" -ForegroundColor Gray
     }
     

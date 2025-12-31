@@ -9,6 +9,9 @@
 .PARAMETER Force
     Start regardless of time window (for testing).
 
+.PARAMETER ShowWindow
+    Launch IBKR Gateway with a visible window (default is minimized).
+
 .EXAMPLE
     .\start-gateway.ps1
     .\start-gateway.ps1 -Force
@@ -16,13 +19,16 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Force
+    [switch]$Force,
+    [switch]$ShowWindow,
+    [switch]$NoAgent
 )
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
+$StateDir = "C:\ProgramData\mm-ibkr-gateway"
 
 # Source common functions
 . (Join-Path $ScriptDir "lib\common.ps1")
@@ -81,8 +87,114 @@ if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
 }
 
 # Start gateway process
+# IBKR Gateway looks for jts.ini in %USERPROFILE%\Jts
+# Ensure the config directory exists and is set correctly
+$jtsConfigDir = "$env:USERPROFILE\Jts"
+$userIniPath = "$jtsConfigDir\jts.ini"
+if (-not (Test-Path "$jtsConfigDir\jts.ini")) {
+    Write-Host "WARNING: jts.ini not found at $jtsConfigDir\jts.ini" -ForegroundColor Yellow
+    Write-Host "Run setup-ibkr-autologin.ps1 to configure auto-login" -ForegroundColor Yellow
+    Write-Host "Continuing anyway - Gateway will show login prompt..." -ForegroundColor Gray
+}
+
+# Keep install jts.ini in sync if it is missing credentials
+$installIniPath = Join-Path $gatewayPath "jts.ini"
+if (Test-Path $userIniPath) {
+    $userIni = Get-Content -Path $userIniPath -Raw
+    $installNeedsUpdate = (-not (Test-Path $installIniPath)) -or -not (Select-String -Path $installIniPath -Pattern "PaperLogin=" -SimpleMatch -ErrorAction SilentlyContinue)
+    if ($installNeedsUpdate) {
+        try {
+            Set-Content -Path $installIniPath -Value $userIni -Encoding UTF8
+            Write-Host "Synced jts.ini to gateway install path" -ForegroundColor Gray
+        } catch {
+            Write-Host "WARNING: Could not sync jts.ini to install path: $_" -ForegroundColor Yellow
+        }
+    }
+}
+
+$agentEnabled = $true
+if ($env:IB_AUTOMATER_ENABLED) {
+    [bool]::TryParse($env:IB_AUTOMATER_ENABLED, [ref]$agentEnabled) | Out-Null
+}
+if ($NoAgent) { $agentEnabled = $false }
+
+if ($agentEnabled) {
+    # Prepare IBAutomater (Java agent) for UI automation + auto-restart handling
+    New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
+    $jarSource = Join-Path $ScriptDir "ibautomater\IBAutomater.jar"
+    $jarTarget = Join-Path $StateDir "IBAutomater.jar"
+    $javaAgentConfigPath = Join-Path $StateDir "IBAutomater.json"
+
+    if (-not (Test-Path $jarSource)) {
+        Write-Host "ERROR: IBAutomater.jar missing at $jarSource" -ForegroundColor Red
+        Write-Host "Re-run setup or copy jar to deploy/windows/ibautomater/IBAutomater.jar" -ForegroundColor Yellow
+        exit 1
+    }
+
+    Copy-Item $jarSource $jarTarget -Force
+
+    # Load credentials for the Java agent
+    $username = $env:IBKR_USERNAME
+    $password = $env:IBKR_PASSWORD
+    if (-not $username -or -not $password) {
+        $credFile = Join-Path $RepoRoot "secrets\ibkr_credentials.json"
+        if (Test-Path $credFile) {
+            $creds = Get-Content $credFile | ConvertFrom-Json
+            if (-not $username) { $username = $creds.username }
+            if (-not $password) { $password = $creds.password }
+        }
+    }
+    if (-not $username -or -not $password) {
+        Write-Host "ERROR: IBKR credentials missing (set IBKR_USERNAME/IBKR_PASSWORD or secrets\\ibkr_credentials.json)" -ForegroundColor Red
+        exit 1
+    }
+
+    $tradingMode = if ($env:TRADING_MODE -eq "live") { "live" } else { "paper" }
+    $gatewayPort = if ($tradingMode -eq "live") {
+        if ($env:LIVE_GATEWAY_PORT) { [int]$env:LIVE_GATEWAY_PORT } else { 4001 }
+    } else {
+        if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
+    }
+    $exportLogs = $false
+    $isRestart = $false
+    $agentConfigContent = @(
+        $username
+        $password
+        $tradingMode
+        $gatewayPort
+        $exportLogs
+        $isRestart
+    ) -join "`n"
+    Set-Content -Path $javaAgentConfigPath -Value $agentConfigContent -Encoding UTF8
+
+    # Ensure ibgateway.vmoptions has the javaagent entry
+    $vmOptionsPath = Join-Path $gatewayPath "ibgateway.vmoptions"
+    $javaAgentLine = "-javaagent:$jarTarget=$javaAgentConfigPath"
+    if (Test-Path $vmOptionsPath) {
+        $vmLines = Get-Content $vmOptionsPath
+        $filtered = $vmLines | Where-Object { $_ -notmatch "IBAutomater\.jar" }
+        if (-not ($filtered -contains $javaAgentLine)) {
+            $filtered += $javaAgentLine
+        }
+        Set-Content -Path $vmOptionsPath -Value $filtered -Encoding UTF8
+    } else {
+        Set-Content -Path $vmOptionsPath -Value @($javaAgentLine) -Encoding UTF8
+    }
+} else {
+    Write-Host "IBAutomater disabled (env IB_AUTOMATER_ENABLED=false or -NoAgent)" -ForegroundColor Yellow
+}
+
 try {
-    $process = Start-Process -FilePath $gatewayExe -PassThru
+    # Launch gateway; default minimized, optionally visible for debugging
+    $windowStyle = if ($ShowWindow) { "Normal" } else { "Minimized" }
+    # Force jts config directory so gateway reads the user jts.ini we manage
+    $jtsArg = "-J-DjtsConfigDir=$jtsConfigDir"
+
+    $process = Start-Process -FilePath $gatewayExe `
+        -WorkingDirectory $gatewayPath `
+        -WindowStyle $windowStyle `
+        -ArgumentList $jtsArg `
+        -PassThru
     Write-Host "IBKR Gateway started (PID: $($process.Id))" -ForegroundColor Green
     
     # Log startup

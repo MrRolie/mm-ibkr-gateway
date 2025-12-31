@@ -29,9 +29,9 @@ $gatewayPort = if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } els
 $apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
 $apiHost = if ($env:API_BIND_HOST) { $env:API_BIND_HOST } else { "127.0.0.1" }
 
-Write-Host "`n" + "="*60 -ForegroundColor Cyan
+Write-Host ("`n" + ("=" * 60)) -ForegroundColor Cyan
 Write-Host "  mm-ibkr-gateway Status" -ForegroundColor Cyan
-Write-Host "="*60 -ForegroundColor Cyan
+Write-Host ("=" * 60) -ForegroundColor Cyan
 Write-Host ""
 
 # Time and window status
@@ -148,11 +148,20 @@ Write-Host ""
 
 # Scheduled tasks
 Write-Host "SCHEDULED TASKS" -ForegroundColor White
-$tasks = schtasks /query /fo CSV /tn "\mm-ibkr-gateway\*" 2>$null | ConvertFrom-Csv
+if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+    $tasks = Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" -ErrorAction SilentlyContinue
+    if (-not $tasks) {
+        # Fallback: query all tasks and filter (handles wildcard limitations)
+        $tasks = schtasks /query /fo CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\\mm-ibkr-gateway\\*" }
+    }
+} else {
+    $tasks = schtasks /query /fo CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\\mm-ibkr-gateway\\*" }
+}
+
 if ($tasks) {
     foreach ($task in $tasks) {
         $taskName = $task.TaskName -replace "\\mm-ibkr-gateway\\", ""
-        $status = $task.Status
+        $status = if ($task.Status) { $task.Status } else { $task.State }
         $statusColor = switch ($status) {
             "Ready" { "Green" }
             "Running" { "Cyan" }
@@ -187,5 +196,5 @@ if (Test-Path $stateFile) {
     Write-Host ""
 }
 
-Write-Host "="*60 -ForegroundColor Cyan
+Write-Host ("=" * 60) -ForegroundColor Cyan
 Write-Host ""

@@ -240,6 +240,107 @@ Created by `setup-tasks.ps1`:
 - Run with highest privileges: **Yes**
 - Stop if running longer than: **1 hour** (except watchdog)
 
+### Manual Task Creation (Alternative to setup-tasks.ps1)
+
+If the automated script fails or you prefer manual setup:
+
+1. **Open Task Scheduler** (`taskschd.msc` or Start → Task Scheduler)
+
+2. **Create Task Folder:**
+   - Right-click "Task Scheduler Library" → New Folder
+   - Name: `mm-ibkr-gateway`
+
+3. **Create Each Task:**
+
+   For each task below, right-click the `mm-ibkr-gateway` folder → Create Task:
+
+   #### IBKR-Gateway-START
+
+   - **General Tab:**
+     - Name: `IBKR-Gateway-START`
+     - Description: `Start IBKR Gateway at market open`
+     - User account: Your Windows account
+     - ☑ Run whether user is logged on or not
+     - ☑ Run with highest privileges
+   - **Triggers Tab:**
+     - New → Weekly
+     - Days: Monday, Tuesday, Wednesday, Thursday, Friday
+     - Start time: `04:00:00`
+     - ☑ Enabled
+   - **Actions Tab:**
+     - New → Start a program
+     - Program: `powershell.exe`
+     - Arguments: `-ExecutionPolicy Bypass -NoProfile -File "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows\start-gateway.ps1"`
+   - **Settings Tab:**
+     - ☑ Allow task to be run on demand
+     - ☐ Stop the task if it runs longer than: 1 hour
+
+   #### IBKR-API-START
+
+   - Same as Gateway-START but:
+     - Name: `IBKR-API-START`
+     - Description: `Start mm-ibkr-gateway API server`
+     - Start time: `04:02:00`
+     - Script: `start-api.ps1`
+
+   #### IBKR-API-STOP
+
+   - **General Tab:** Same as above
+     - Name: `IBKR-API-STOP`
+     - Description: `Stop mm-ibkr-gateway API server`
+   - **Triggers Tab:**
+     - Weekly, Mon-Fri, `20:00:00`
+   - **Actions Tab:**
+     - Script: `stop-api.ps1`
+   - **Settings Tab:**
+     - Stop after: 5 minutes
+
+   #### IBKR-Gateway-STOP
+
+   - Same as API-STOP but:
+     - Name: `IBKR-Gateway-STOP`
+     - Description: `Stop IBKR Gateway after market close`
+     - Start time: `20:01:00`
+     - Script: `stop-gateway.ps1`
+
+   #### IBKR-Watchdog
+
+   - **General Tab:** Same as above
+     - Name: `IBKR-Watchdog`
+     - Description: `Health check and auto-restart services`
+   - **Triggers Tab:**
+     - New → On a schedule → Daily
+     - Recur every: 1 day
+     - Advanced: ☑ Repeat task every: `2 minutes`, For a duration of: `Indefinitely`
+   - **Actions Tab:**
+     - Script: `watchdog.ps1`
+   - **Settings Tab:**
+     - ☑ If the task is already running: Do not start a new instance
+
+   #### IBKR-Boot-Reconcile
+
+   - **General Tab:** Same as above
+     - Name: `IBKR-Boot-Reconcile`
+     - Description: `Ensure correct state after system boot`
+   - **Triggers Tab:**
+     - New → At startup
+     - Delay for: `1 minute`
+   - **Actions Tab:**
+     - Script: `boot-reconcile.ps1`
+   - **Settings Tab:**
+     - Stop after: 10 minutes
+
+4. **Test Tasks:**
+
+   ```powershell
+   # Test start tasks
+   schtasks /run /tn "\mm-ibkr-gateway\IBKR-Gateway-START"
+   schtasks /run /tn "\mm-ibkr-gateway\IBKR-API-START"
+   
+   # Check status
+   .\status.ps1
+   ```
+
 ---
 
 ## Watchdog Behavior
@@ -262,6 +363,27 @@ Outside the run window, watchdog ensures services are **stopped**.
 ---
 
 ## Troubleshooting
+
+### Task Scheduler Script Issues
+
+If `setup-tasks.ps1` fails with "system cannot find the file specified":
+
+1. **Verify the script created the folder:**
+   ```powershell
+   Test-Path "C:\Windows\System32\Tasks\mm-ibkr-gateway"
+   ```
+
+2. **Create the folder manually if needed:**
+   ```powershell
+   New-Item -ItemType Directory -Path "C:\Windows\System32\Tasks\mm-ibkr-gateway" -Force
+   ```
+
+3. **Re-run the setup script:**
+   ```powershell
+   .\setup-tasks.ps1 -Force
+   ```
+
+4. **If still failing, use manual task creation** (see section above)
 
 ### Check Service Status
 
@@ -402,6 +524,28 @@ Get-Content "$env:GDRIVE_BASE_PATH\logs\api.log" -Wait
 # In another terminal
 .\status.ps1
 ```
+
+## Auto-restart & IBAutomater (new)
+
+- `start-gateway.ps1` launches IB Gateway with the IBAutomater Java agent for UI automation (login, auto-restart toggle, popup handling). It reads credentials from `secrets/ibkr_credentials.json` or `IBKR_USERNAME/IBKR_PASSWORD`.
+- On first run, launch with a visible window to confirm auto-login and that **Configuration → Lock and Exit → Auto restart** is selected:
+  ```powershell
+  .\start-gateway.ps1 -ShowWindow -Force
+  ```
+- Daily stop tasks are now optional. Set `STOP_TASKS_ENABLED=true` in `.env` before running `setup-tasks.ps1` if you want daily API/Gateway stop tasks; otherwise they are skipped.
+
+## Enabling Orders (paper) and Switching to Live
+
+- Orders stay blocked by default (`ORDERS_ENABLED=false`). To allow orders in paper:
+  1. Set `ORDERS_ENABLED=true` in `.env`.
+  2. Ensure the arm file exists at `ARM_ORDERS_FILE` (acts as a physical guard).
+  3. Restart the API.
+- To switch to live trading:
+  1. Set `TRADING_MODE=live` in `.env`.
+  2. Set `ORDERS_ENABLED=true` only if you intend to place live orders.
+  3. Create a live trading override file at `LIVE_TRADING_OVERRIDE_FILE` (a second guard).
+  4. Ensure firewall rules, credentials, and IBKR live ports/IDs (`LIVE_GATEWAY_PORT`, `LIVE_CLIENT_ID`) are correct.
+  5. Restart Gateway and API. Verify via `.\status.ps1` and health check that `trading_mode` reports `live` before placing any orders.
 
 ---
 

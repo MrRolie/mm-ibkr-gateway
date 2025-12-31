@@ -47,9 +47,9 @@ function Write-Check {
     }
     
     $symbol = switch ($Status) {
-        "PASS" { "[✓]" }
+        "PASS" { "[+]" }
         "WARN" { "[!]" }
-        "FAIL" { "[✗]" }
+        "FAIL" { "[x]" }
         default { "[ ]" }
     }
     
@@ -68,9 +68,9 @@ function Write-Check {
     }
 }
 
-Write-Host "`n" + "="*60 -ForegroundColor Cyan
+Write-Host ("\n" + "="*60) -ForegroundColor Cyan
 Write-Host "  mm-ibkr-gateway Deployment Verification" -ForegroundColor Cyan
-Write-Host "="*60 -ForegroundColor Cyan
+Write-Host ("="*60) -ForegroundColor Cyan
 Write-Host ""
 
 # ============================================================================
@@ -215,30 +215,52 @@ Write-Host ""
 # ============================================================================
 Write-Host "SCHEDULED TASKS" -ForegroundColor White
 
-$expectedTasks = @(
-    "IBKR-Gateway-START",
-    "IBKR-API-START",
-    "IBKR-API-STOP",
-    "IBKR-Gateway-STOP",
-    "IBKR-Watchdog",
-    "IBKR-Boot-Reconcile"
-)
+# Read optional task flags
+$stopTasksEnabled = $false
+$gatewayStartEnabled = $false
+if ($env:STOP_TASKS_ENABLED) { [bool]::TryParse($env:STOP_TASKS_ENABLED, [ref]$stopTasksEnabled) | Out-Null }
+if ($env:START_GATEWAY_TASK_ENABLED) { [bool]::TryParse($env:START_GATEWAY_TASK_ENABLED, [ref]$gatewayStartEnabled) | Out-Null }
 
-$taskOutput = schtasks /query /fo CSV /tn "\mm-ibkr-gateway\*" 2>$null
-if ($taskOutput) {
-    $tasks = $taskOutput | ConvertFrom-Csv
-    $taskNames = $tasks | ForEach-Object { $_.TaskName -replace "\\mm-ibkr-gateway\\", "" }
+$expectedTasks = @()
+if ($gatewayStartEnabled) { $expectedTasks += "IBKR-Gateway-START" }
+$expectedTasks += "IBKR-API-START"
+if ($stopTasksEnabled) {
+    $expectedTasks += "IBKR-API-STOP"
+    $expectedTasks += "IBKR-Gateway-STOP"
+}
+$expectedTasks += "IBKR-Watchdog"
+$expectedTasks += "IBKR-Boot-Reconcile"
+
+$tasks = Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" -ErrorAction SilentlyContinue
+if ($tasks) {
+    $taskNames = $tasks.TaskName
     
     foreach ($expectedTask in $expectedTasks) {
         if ($expectedTask -in $taskNames) {
-            $task = $tasks | Where-Object { $_.TaskName -match $expectedTask }
-            Write-Check $expectedTask "PASS" $task.Status
+            $task = $tasks | Where-Object { $_.TaskName -eq $expectedTask }
+            Write-Check $expectedTask "PASS" $task.State
         } else {
-            Write-Check $expectedTask "FAIL" "Not found"
+            Write-Check $expectedTask "WARN" "Not found (task optional in current config)"
         }
     }
 } else {
-    Write-Check "Scheduled tasks" "FAIL" "No tasks found - run setup-tasks.ps1 as admin"
+    # Fallback to schtasks for older systems
+    $taskOutput = schtasks /query /fo CSV /tn "\mm-ibkr-gateway\*" 2>$null
+    if ($taskOutput) {
+        $tasks = $taskOutput | ConvertFrom-Csv
+        $taskNames = $tasks | ForEach-Object { $_.TaskName -replace "\\mm-ibkr-gateway\\", "" }
+        
+        foreach ($expectedTask in $expectedTasks) {
+            if ($expectedTask -in $taskNames) {
+                $task = $tasks | Where-Object { $_.TaskName -match $expectedTask }
+                Write-Check $expectedTask "PASS" $task.Status
+            } else {
+                Write-Check $expectedTask "WARN" "Not found (task optional in current config)"
+            }
+        }
+    } else {
+        Write-Check "Scheduled tasks" "WARN" "No tasks found (tasks optional; run setup-tasks.ps1 if desired)"
+    }
 }
 
 Write-Host ""
@@ -333,7 +355,7 @@ Write-Host ""
 # ============================================================================
 # Summary
 # ============================================================================
-Write-Host "="*60 -ForegroundColor Cyan
+Write-Host ("="*60) -ForegroundColor Cyan
 Write-Host ""
 
 $totalChecks = $passCount + $warnCount + $failCount

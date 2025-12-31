@@ -65,16 +65,24 @@ if (-not $passwordProvided) {
 $startTime = if ($env:RUN_WINDOW_START) { $env:RUN_WINDOW_START } else { "04:00" }
 $endTime = if ($env:RUN_WINDOW_END) { $env:RUN_WINDOW_END } else { "20:00" }
 $runDays = if ($env:RUN_WINDOW_DAYS) { $env:RUN_WINDOW_DAYS } else { "Mon,Tue,Wed,Thu,Fri" }
+$stopTasksEnabled = $false
+if ($env:STOP_TASKS_ENABLED) {
+    [bool]::TryParse($env:STOP_TASKS_ENABLED, [ref]$stopTasksEnabled) | Out-Null
+}
+$gatewayStartTaskEnabled = $false
+if ($env:START_GATEWAY_TASK_ENABLED) {
+    [bool]::TryParse($env:START_GATEWAY_TASK_ENABLED, [ref]$gatewayStartTaskEnabled) | Out-Null
+}
 
-# Convert day abbreviations to full names for Task Scheduler
+# Convert day abbreviations to Task Scheduler format (MON,TUE,WED,THU,FRI,SAT,SUN)
 $dayMap = @{
-    "Mon" = "MONDAY"
-    "Tue" = "TUESDAY"
-    "Wed" = "WEDNESDAY"
-    "Thu" = "THURSDAY"
-    "Fri" = "FRIDAY"
-    "Sat" = "SATURDAY"
-    "Sun" = "SUNDAY"
+    "Mon" = "MON"
+    "Tue" = "TUE"
+    "Wed" = "WED"
+    "Thu" = "THU"
+    "Fri" = "FRI"
+    "Sat" = "SAT"
+    "Sun" = "SUN"
 }
 $scheduleDays = ($runDays -split "," | ForEach-Object { $dayMap[$_.Trim()] }) -join ","
 
@@ -90,17 +98,36 @@ $apiStartTime = "{0:D2}:{1:D2}" -f $startHour, ($startMinute + 2)
 
 Write-Host "`nSchedule Configuration:" -ForegroundColor Gray
 Write-Host "  Days: $scheduleDays"
-Write-Host "  Gateway Start: $startTime"
+if ($gatewayStartTaskEnabled) {
+    Write-Host "  Gateway Start: $startTime"
+} else {
+    Write-Host "  Gateway Start: DISABLED (START_GATEWAY_TASK_ENABLED=false)" -ForegroundColor Yellow
+}
 Write-Host "  API Start: $apiStartTime"
-Write-Host "  API Stop: $endTime"
-Write-Host "  Gateway Stop: $gatewayStopTime"
+if ($stopTasksEnabled) {
+    Write-Host "  API Stop: $endTime"
+    Write-Host "  Gateway Stop: $gatewayStopTime"
+} else {
+    Write-Host "  Stop tasks: DISABLED (set STOP_TASKS_ENABLED=true to create stop tasks)" -ForegroundColor Yellow
+}
 Write-Host ""
 
 # Task folder
 $taskFolder = "\mm-ibkr-gateway"
 
+# Ensure task folder exists in Task Scheduler
+$taskFolderPath = "C:\Windows\System32\Tasks\mm-ibkr-gateway"
+if (-not (Test-Path $taskFolderPath)) {
+    try {
+        New-Item -ItemType Directory -Path $taskFolderPath -Force | Out-Null
+        Write-Host "Created task folder: $taskFolder" -ForegroundColor Gray
+    } catch {
+        Write-Host "WARNING: Could not create task folder: $_" -ForegroundColor Yellow
+    }
+}
+
 # Helper function to create a task
-function Create-ScheduledTask {
+function New-IBKRScheduledTask {
     param(
         [string]$TaskName,
         [string]$Description,
@@ -113,23 +140,26 @@ function Create-ScheduledTask {
     
     $fullTaskName = "$taskFolder\$TaskName"
     
-    # Remove existing task if -Force
+    # Remove existing task if -Force (suppress all output/errors)
     if ($Force) {
-        schtasks /delete /tn $fullTaskName /f 2>$null
+        Start-Process -FilePath "schtasks" -ArgumentList "/delete", "/tn", $fullTaskName, "/f" -WindowStyle Hidden -Wait 2>$null
     }
     
-    # Check if task exists
-    $existing = schtasks /query /tn $fullTaskName 2>$null
+    # Check if task exists by querying and checking exit code
+    $checkProcess = Start-Process -FilePath "schtasks" -ArgumentList "/query", "/tn", $fullTaskName -WindowStyle Hidden -Wait -PassThru 2>$null
+    $existing = $checkProcess.ExitCode -eq 0
+    
     if ($existing -and -not $Force) {
         Write-Host "  Task already exists: $TaskName (use -Force to recreate)" -ForegroundColor Yellow
         return
     }
     
-    # Build schtasks command
+    # Build schtasks command - note: /tr needs escaped quotes for XML
+    $taskCommand = "powershell.exe -ExecutionPolicy Bypass -NoProfile -File \`"$ScriptPath\`""
     $schtasksArgs = @(
         "/create",
         "/tn", $fullTaskName,
-        "/tr", "powershell.exe -ExecutionPolicy Bypass -NoProfile -File `"$ScriptPath`"",
+        "/tr", $taskCommand,
         "/ru", $TaskUser,
         "/rl", "HIGHEST"
     )
@@ -168,16 +198,20 @@ function Create-ScheduledTask {
 Write-Host "Creating scheduled tasks..." -ForegroundColor Cyan
 
 # 1. Gateway START
-Create-ScheduledTask `
-    -TaskName "IBKR-Gateway-START" `
-    -Description "Start IBKR Gateway at market open" `
-    -ScriptPath (Join-Path $ScriptDir "start-gateway.ps1") `
-    -Trigger "DAILY" `
-    -Time $startTime `
-    -Days $scheduleDays
+if ($gatewayStartTaskEnabled) {
+    New-IBKRScheduledTask `
+        -TaskName "IBKR-Gateway-START" `
+        -Description "Start IBKR Gateway at market open" `
+        -ScriptPath (Join-Path $ScriptDir "start-gateway.ps1") `
+        -Trigger "DAILY" `
+        -Time $startTime `
+        -Days $scheduleDays
+} else {
+    Write-Host "Skipping Gateway start task (START_GATEWAY_TASK_ENABLED=false)" -ForegroundColor Yellow
+}
 
 # 2. API START
-Create-ScheduledTask `
+New-IBKRScheduledTask `
     -TaskName "IBKR-API-START" `
     -Description "Start mm-ibkr-gateway API server" `
     -ScriptPath (Join-Path $ScriptDir "start-api.ps1") `
@@ -186,25 +220,33 @@ Create-ScheduledTask `
     -Days $scheduleDays
 
 # 3. API STOP
-Create-ScheduledTask `
-    -TaskName "IBKR-API-STOP" `
-    -Description "Stop mm-ibkr-gateway API server" `
-    -ScriptPath (Join-Path $ScriptDir "stop-api.ps1") `
-    -Trigger "DAILY" `
-    -Time $endTime `
-    -Days $scheduleDays
+if ($stopTasksEnabled) {
+    New-IBKRScheduledTask `
+        -TaskName "IBKR-API-STOP" `
+        -Description "Stop mm-ibkr-gateway API server" `
+        -ScriptPath (Join-Path $ScriptDir "stop-api.ps1") `
+        -Trigger "DAILY" `
+        -Time $endTime `
+        -Days $scheduleDays
+} else {
+    Write-Host "Skipping API stop task (STOP_TASKS_ENABLED=false)" -ForegroundColor Yellow
+}
 
 # 4. Gateway STOP
-Create-ScheduledTask `
-    -TaskName "IBKR-Gateway-STOP" `
-    -Description "Stop IBKR Gateway after market close" `
-    -ScriptPath (Join-Path $ScriptDir "stop-gateway.ps1") `
-    -Trigger "DAILY" `
-    -Time $gatewayStopTime `
-    -Days $scheduleDays
+if ($stopTasksEnabled) {
+    New-IBKRScheduledTask `
+        -TaskName "IBKR-Gateway-STOP" `
+        -Description "Stop IBKR Gateway after market close" `
+        -ScriptPath (Join-Path $ScriptDir "stop-gateway.ps1") `
+        -Trigger "DAILY" `
+        -Time $gatewayStopTime `
+        -Days $scheduleDays
+} else {
+    Write-Host "Skipping Gateway stop task (STOP_TASKS_ENABLED=false)" -ForegroundColor Yellow
+}
 
 # 5. Watchdog
-Create-ScheduledTask `
+New-IBKRScheduledTask `
     -TaskName "IBKR-Watchdog" `
     -Description "Health check and auto-restart services" `
     -ScriptPath (Join-Path $ScriptDir "watchdog.ps1") `
@@ -212,7 +254,7 @@ Create-ScheduledTask `
     -Interval 2
 
 # 6. Boot Reconcile
-Create-ScheduledTask `
+New-IBKRScheduledTask `
     -TaskName "IBKR-Boot-Reconcile" `
     -Description "Ensure correct state after system boot" `
     -ScriptPath (Join-Path $ScriptDir "boot-reconcile.ps1") `
@@ -226,4 +268,9 @@ Write-Host ""
 
 # Show scheduled tasks
 Write-Host "Registered Tasks:" -ForegroundColor Cyan
-schtasks /query /fo TABLE /tn "\mm-ibkr-gateway\*" 2>$null | Select-Object -Skip 1
+if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+    Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" | Get-ScheduledTaskInfo | Select-Object TaskName, NextRunTime, LastTaskResult | Format-Table -AutoSize
+} else {
+    # Fallback for older systems (might fail if wildcard not supported)
+    schtasks /query /fo TABLE /tn "\mm-ibkr-gateway\*" 2>$null | Select-Object -Skip 1
+}
