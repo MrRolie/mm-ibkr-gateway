@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 from contextvars import ContextVar
+from pathlib import Path
 from typing import Optional
 
 from pythonjsonlogger import jsonlogger
@@ -138,6 +139,30 @@ def get_log_format() -> str:
     return os.environ.get("LOG_FORMAT", "json").lower()
 
 
+def get_log_file_path() -> Optional[Path]:
+    """
+    Get log file path from environment.
+
+    LOG_FILE_PATH can be either a directory or a file path.
+    If it's a directory (or has no suffix), defaults to ibkr-gateway.log.
+    """
+    log_path = os.environ.get("LOG_FILE_PATH")
+    if not log_path:
+        return None
+
+    path = Path(log_path)
+    if path.exists():
+        if path.is_dir():
+            return path / "ibkr-gateway.log"
+        return path
+
+    # If the path has no suffix, treat it as a directory
+    if not path.suffix:
+        return path / "ibkr-gateway.log"
+
+    return path
+
+
 def configure_logging(
     level: Optional[int] = None,
     format_type: Optional[str] = None,
@@ -187,11 +212,31 @@ def configure_logging(
     root_logger.addHandler(console_handler)
     root_logger.setLevel(level)
 
+    # Optional file handler for persistent logs
+    log_file_path = get_log_file_path()
+    if log_file_path:
+        try:
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "Failed to configure file logging at %s: %s",
+                log_file_path,
+                exc,
+            )
+
     # Suppress noisy third-party loggers
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
 
     # Log configuration complete
     logger = logging.getLogger(__name__)

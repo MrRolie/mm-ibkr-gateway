@@ -26,19 +26,19 @@ Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 Write-Log "Boot reconciliation started" "INFO"
 
-# Wait for network and Google Drive to be ready
+# Wait for network and storage path to be ready
 $maxWait = 120  # 2 minutes
 $waited = 0
 $gdrivePath = $env:GDRIVE_BASE_PATH
 
 while ($gdrivePath -and -not (Test-Path $gdrivePath) -and $waited -lt $maxWait) {
-    Write-Log "Waiting for Google Drive ($waited s)..." "INFO"
+    Write-Log "Waiting for storage path ($waited s)..." "INFO"
     Start-Sleep -Seconds 10
     $waited += 10
 }
 
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
-    Write-Log "WARN: Google Drive not available after ${maxWait}s. Proceeding anyway." "WARN"
+    Write-Log "WARN: Storage path not available after ${maxWait}s. Proceeding anyway." "WARN"
 }
 
 # Check if within run window

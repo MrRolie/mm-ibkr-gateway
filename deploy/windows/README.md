@@ -26,7 +26,7 @@ A Raspberry Pi on the same LAN connects to this node to execute trades.
 │           │                       │                             │
 │           ▼                       ▼                             │
 │  ┌─────────────────────────────────────────┐                    │
-│  │         Google Drive Sync Folder        │                    │
+│  │         Storage Sync Folder (optional)  │                    │
 │  │  - audit.db (SQLite)                    │                    │
 │  │  - logs/                                │                    │
 │  └─────────────────────────────────────────┘                    │
@@ -51,7 +51,7 @@ A Raspberry Pi on the same LAN connects to this node to execute trades.
 
 1. **IBKR Gateway** (not TWS) - Download from [Interactive Brokers](https://www.interactivebrokers.com/en/trading/ibgateway-stable.php)
 2. **Python 3.11+** with Poetry installed
-3. **Google Drive for Desktop** with sync enabled
+3. **Optional: Google Drive for Desktop** (if using synced storage)
 4. **Git** (for cloning/updating the repo)
 
 ### Required Access
@@ -104,9 +104,9 @@ cd "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows"
 This interactive script will:
 
 - Detect your LAN IP
-- Ask for Pi IP, Google Drive path, IBKR credentials
+- Ask for Pi IP, storage path (local or synced), IBKR credentials
 - Generate `.env` file with all settings
-- Create directories in Google Drive
+- Create directories in the chosen storage path
 
 ### 2. Set Up IBKR Gateway Auto-Login
 
@@ -187,9 +187,9 @@ Located in repo root `.env` file:
 
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
-| `GDRIVE_BASE_PATH` | (configured) | Google Drive sync folder |
-| `AUDIT_DB_PATH` | `{GDRIVE}/audit.db` | Audit database location |
-| `LOG_FILE_PATH` | `{GDRIVE}/logs/` | Log file directory |
+| `GDRIVE_BASE_PATH` | (configured) | Storage base path (local or synced folder) |
+| `AUDIT_DB_PATH` | `{BASE}/audit.db` | Audit database location |
+| `LOG_FILE_PATH` | `{BASE}/logs/` | Log file directory |
 | `IBKR_GATEWAY_PATH` | (configured) | IBKR Gateway install path |
 
 ---

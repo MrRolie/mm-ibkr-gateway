@@ -111,12 +111,12 @@ Write-Host ""
 # ============================================================================
 Write-Host "DIRECTORIES" -ForegroundColor White
 
-# Google Drive
+# Storage path
 if ($env:GDRIVE_BASE_PATH) {
     if (Test-Path $env:GDRIVE_BASE_PATH) {
-        Write-Check "Google Drive accessible" "PASS" $env:GDRIVE_BASE_PATH
+        Write-Check "Storage path accessible" "PASS" $env:GDRIVE_BASE_PATH
     } else {
-        Write-Check "Google Drive accessible" "FAIL" "Path not found: $env:GDRIVE_BASE_PATH"
+        Write-Check "Storage path accessible" "FAIL" "Path not found: $env:GDRIVE_BASE_PATH"
     }
 }
 

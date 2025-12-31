@@ -109,7 +109,7 @@ poetry run python -m ibkr_core.cli status <order_id>
 Available via MCP server for LLM integration:
 
 | Tool | Description |
-|------|-------------|
+| ------ | ------------- |
 | `ibkr_health` | Check gateway connection status |
 | `ibkr_quote` | Get real-time quote |
 | `ibkr_historical` | Get historical bars |
@@ -125,6 +125,7 @@ Available via MCP server for LLM integration:
 ## Request/Response Models
 
 ### SymbolSpec
+
 ```json
 {
   "symbol": "AAPL",
@@ -138,6 +139,7 @@ Available via MCP server for LLM integration:
 ```
 
 ### OrderSpec
+
 ```json
 {
   "instrument": { /* SymbolSpec */ },
@@ -151,6 +153,7 @@ Available via MCP server for LLM integration:
 ```
 
 ### Quote Response
+
 ```json
 {
   "symbol": "AAPL",
@@ -166,6 +169,7 @@ Available via MCP server for LLM integration:
 ```
 
 ### OrderResult
+
 ```json
 {
   "orderId": "uuid-here",
@@ -192,6 +196,7 @@ Available via MCP server for LLM integration:
 ```
 
 Error codes:
+
 - `VALIDATION_ERROR` - Invalid request parameters
 - `IBKR_ERROR` - IBKR Gateway error
 - `TIMEOUT` - Operation timed out

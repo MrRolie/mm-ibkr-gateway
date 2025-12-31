@@ -59,10 +59,10 @@ if (-not $inWindow) {
 
 # We're in the run window - check services
 
-# Check Google Drive first
+# Check storage path first
 $gdrivePath = $env:GDRIVE_BASE_PATH
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
-    Write-Log "CRITICAL: Google Drive not accessible at $gdrivePath" "ERROR"
+    Write-Log "CRITICAL: Storage path not accessible at $gdrivePath" "ERROR"
     Write-Log "Will not start services without log/audit storage" "ERROR"
     exit 1
 }

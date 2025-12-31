@@ -3,6 +3,7 @@
 ## What is this project?
 
 This is a **Python gateway service** for Interactive Brokers (IBKR) that provides:
+
 - REST API for trading operations
 - MCP (Model Context Protocol) server for LLM integration
 - CLI for manual trading operations
@@ -10,6 +11,7 @@ This is a **Python gateway service** for Interactive Brokers (IBKR) that provide
 ## Key Safety Features
 
 **This system is SAFE BY DEFAULT:**
+
 - Orders are DISABLED until explicitly enabled (`ORDERS_ENABLED=true`)
 - Paper trading mode is the default (`TRADING_MODE=paper`)
 - Live trading requires explicit override file
@@ -32,7 +34,7 @@ poetry run python -m ibkr_core.cli quote AAPL
 
 ## Project Structure
 
-```
+```text
 mm-ibkr-gateway/
 ├── api/                    # FastAPI REST API
 │   ├── server.py          # Main API application
@@ -65,7 +67,7 @@ mm-ibkr-gateway/
 All configuration via environment variables (see `.env.example`):
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `TRADING_MODE` | `paper` | `paper` or `live` |
 | `ORDERS_ENABLED` | `false` | Enable order placement |
 | `IBKR_MODE` | - | `simulation` for testing without gateway |
@@ -75,17 +77,20 @@ All configuration via environment variables (see `.env.example`):
 ## Key Concepts
 
 ### Trading Modes
+
 - **paper**: Connects to paper trading gateway (port 4002)
 - **live**: Connects to live trading gateway (port 4001) - requires override file
 - **simulation**: In-memory simulated client, no gateway needed
 
 ### Order Flow
+
 1. Create `OrderSpec` with instrument, side, quantity, order type
 2. `preview_order()` - Get estimated execution details
 3. `place_order()` - Submit to IBKR (if `ORDERS_ENABLED=true`)
 4. `cancel_order()` - Cancel open orders
 
 ### Correlation IDs
+
 Every API request gets a UUID correlation ID that propagates through all logs and audit records for traceability.
 
 ## Important Files to Read First
