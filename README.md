@@ -382,6 +382,8 @@ poetry install
 pip install -e .
 ```
 
+**Note on IBKR Gateway**: The system uses [IBAutomater.jar](https://github.com/QuantConnect/IBAutomater) from QuantConnect to handle automated login and UI automation for IBKR Gateway. This is included in Windows deployments for production use.
+
 ### Configuration
 
 1. Copy the example environment file:
@@ -414,6 +416,39 @@ pip install -e .
    ```bash
    python -m ibkr_core.healthcheck
    ```
+
+---
+
+## Windows Deployment (Production)
+
+**Status**: Work in progress - full production deployment guide available
+
+For deploying the system as a Windows-based trading execution node with automated startup, health checks, and scheduled operation:
+
+🔗 **See [deploy/windows/README.md](deploy/windows/README.md)** for complete setup instructions.
+
+### Quick Overview
+
+The Windows deployment provides:
+
+- **Automated IBKR Gateway startup** with [IBAutomater.jar](https://github.com/QuantConnect/IBAutomater) for auto-login
+- **FastAPI REST server** bound to LAN for remote clients (e.g., Raspberry Pi)
+- **Task Scheduler integration** for time-windowed operation (market hours only)
+- **Watchdog automation** for health checks and automatic restart
+- **Google Drive sync** for audit logs and configuration persistence
+- **Firewall restrictions** to IP-whitelist remote clients
+- **Safety enforced** at system level (paper mode, orders disabled by default)
+
+### Key Features
+
+| Feature | Details |
+|---------|----------|
+| **IBAutomater** | Handles IBKR Gateway login automation and UI control via Java agent |
+| **Time Window** | Services run only during weekday market hours (configurable) |
+| **Health Checks** | Automatic service restart with exponential backoff |
+| **Audit Trail** | SQLite database synced to Google Drive for compliance |
+| **API Protection** | Firewall + API key authentication |
+| **Boot Recovery** | Automatic reconciliation on system startup |
 
 ---
 
@@ -451,6 +486,11 @@ pip install -e .
                         ┌─────────────────────────────────────────┐
                         │         IBKR Gateway / TWS              │
                         │         (Paper or Live)                 │
+                        │                                         │
+                        │  On Windows with IBAutomater:           │
+                        │  - Automated login                      │
+                        │  - UI automation & restart handling     │
+                        │  - Task Scheduler integration           │
                         └─────────────────────────────────────────┘
 ```
 

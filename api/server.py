@@ -58,9 +58,9 @@ from api.models import (
     QuoteRequest,
 )
 from ibkr_core.config import get_config
-from ibkr_core.schedule import get_window_status
 from ibkr_core.logging_config import configure_logging
 from ibkr_core.metrics import get_metrics
+from ibkr_core.schedule import get_window_status
 
 # Configure structured logging with correlation IDs
 configure_logging()
@@ -244,7 +244,7 @@ async def schedule_status():
     Schedule status endpoint.
 
     Returns the current schedule configuration and whether we're
-    within the run window. Useful for the Pi to check if the 
+    within the run window. Useful for the Pi to check if the
     execution node should be active.
     """
     return get_window_status()
