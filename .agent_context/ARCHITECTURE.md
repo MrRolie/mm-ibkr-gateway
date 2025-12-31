@@ -2,7 +2,7 @@
 
 ## System Components
 
-```
+```text
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   REST API      │     │   MCP Server    │     │      CLI        │
 │  (FastAPI)      │     │(LLM Integration)│     │  (Click/Typer)  │
@@ -34,7 +34,9 @@
 ## Core Modules
 
 ### `ibkr_core/client.py` - IBKRClient
+
 Wrapper around `ib_insync.IB` providing:
+
 - Dual mode support (paper/live)
 - Connection lifecycle management
 - Structured logging with correlation IDs
@@ -49,6 +51,7 @@ with IBKRClient(mode="paper") as client:
 ```
 
 ### `ibkr_core/models.py` - Domain Models
+
 Pydantic models for all domain objects:
 
 - `SymbolSpec` - Instrument specification (symbol, secType, exchange, currency)
@@ -59,6 +62,7 @@ Pydantic models for all domain objects:
 - `HistoricalBar` - OHLCV bar data
 
 ### `ibkr_core/orders.py` - Order Operations
+
 ```python
 from ibkr_core.orders import preview_order, place_order, cancel_order
 
@@ -73,6 +77,7 @@ cancel_order(client, result.orderId)
 ```
 
 ### `ibkr_core/market_data.py` - Market Data
+
 ```python
 from ibkr_core.market_data import get_quote, get_historical_bars
 
@@ -81,7 +86,9 @@ bars = get_historical_bars(symbol_spec, client, bar_size="1 hour", duration="1 D
 ```
 
 ### `ibkr_core/persistence.py` - Audit Database
+
 SQLite storage for:
+
 - **audit_log**: All events with correlation IDs
 - **order_history**: Complete order lifecycle
 
@@ -93,7 +100,9 @@ events = query_audit_log(account_id="DU12345", limit=100)
 ```
 
 ### `ibkr_core/metrics.py` - Metrics Collection
+
 In-memory metrics with:
+
 - **Counters**: api_requests_total, ibkr_operations_total
 - **Histograms**: api_request_duration_seconds (with p50, p90, p95, p99)
 - **Gauges**: ibkr_connection_status, active_orders
@@ -106,6 +115,7 @@ all_metrics = get_metrics().get_all_metrics()
 ```
 
 ### `ibkr_core/simulation.py` - Simulated Client
+
 For testing without IBKR Gateway:
 
 ```python
@@ -121,7 +131,7 @@ client = get_ibkr_client(mode="simulation")
 ## API Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | GET | `/health` | Health check with connection status |
 | GET | `/metrics` | Application metrics (JSON) |
 | POST | `/market-data/quote` | Get quote for symbol |
@@ -137,7 +147,7 @@ client = get_ibkr_client(mode="simulation")
 
 ## Data Flow Example: Place Order
 
-```
+```text
 1. API Request → POST /orders
    └─ CorrelationIdMiddleware assigns UUID
 

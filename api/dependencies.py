@@ -9,6 +9,7 @@ Provides:
 """
 
 import asyncio
+import contextvars
 import logging
 import os
 import time
@@ -22,7 +23,12 @@ from fastapi import Request
 from ibkr_core.client import ConnectionError as IBKRConnectionError
 from ibkr_core.client import IBKRClient
 from ibkr_core.config import get_config
-from ibkr_core.logging_config import clear_correlation_id, log_with_context, set_correlation_id
+from ibkr_core.logging_config import (
+    clear_correlation_id,
+    get_correlation_id,
+    log_with_context,
+    set_correlation_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -198,16 +204,21 @@ class RequestContext:
 
     def __init__(self, request: Request):
         self.request = request
-        # Generate full UUID for correlation ID
-        self.correlation_id = str(uuid.uuid4())
+        # Prefer existing correlation ID from middleware if present
+        existing_correlation_id = get_correlation_id()
+        if existing_correlation_id:
+            self.correlation_id = existing_correlation_id
+            self._owns_correlation_id = False
+        else:
+            header_id = request.headers.get("X-Correlation-ID")
+            self.correlation_id = header_id or str(uuid.uuid4())
+            self._owns_correlation_id = True
+            set_correlation_id(self.correlation_id)
         # Keep short request_id for backward compatibility
         self.request_id = self.correlation_id[:8]
         self.start_time = time.time()
         self.endpoint = f"{request.method} {request.url.path}"
         self.client_ip = request.client.host if request.client else "unknown"
-
-        # Set correlation ID in context for all subsequent logs
-        set_correlation_id(self.correlation_id)
 
         # Log request start with structured data
         log_with_context(
@@ -227,7 +238,8 @@ class RequestContext:
 
     def cleanup(self):
         """Clean up request context (call at end of request)."""
-        clear_correlation_id()
+        if self._owns_correlation_id:
+            clear_correlation_id()
 
 
 def get_request_context(request: Request) -> RequestContext:
@@ -311,10 +323,11 @@ def run_sync_with_timeout(func: Callable, timeout_s: float, *args, **kwargs):
 
     async def _run():
         loop = asyncio.get_running_loop()
+        ctx = contextvars.copy_context()
         return await asyncio.wait_for(
             loop.run_in_executor(
                 get_ibkr_executor(),
-                lambda: func(*args, **kwargs),
+                lambda: ctx.run(func, *args, **kwargs),
             ),
             timeout=timeout_s,
         )

@@ -15,6 +15,7 @@ Usage:
 """
 
 import asyncio
+import contextvars
 import logging
 from typing import List, Optional
 
@@ -145,10 +146,11 @@ async def execute_ibkr_operation(
 
         # Run the blocking ibkr operation in thread pool with timeout
         loop = asyncio.get_running_loop()
+        ctx = contextvars.copy_context()
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 get_ibkr_executor(),
-                lambda: operation(client, *args, **kwargs),
+                lambda: ctx.run(operation, client, *args, **kwargs),
             ),
             timeout=timeout_s,
         )

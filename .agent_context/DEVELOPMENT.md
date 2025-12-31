@@ -18,11 +18,13 @@ poetry run pytest
 ## Testing
 
 ### Run All Tests
+
 ```bash
 poetry run pytest
 ```
 
 ### Run Specific Test Files
+
 ```bash
 # Unit tests for a module
 poetry run pytest tests/test_orders.py -v
@@ -34,7 +36,7 @@ poetry run pytest tests/test_metrics*.py tests/test_persistence*.py tests/test_s
 ### Test Categories
 
 | Category | Files | Gateway Required |
-|----------|-------|------------------|
+| ---------- | ------- | ------------------ |
 | Unit tests | `test_*.py` (most) | No |
 | Simulation tests | `test_simulation_*.py` | No |
 | E2E tests | `test_e2e_api.py` | Yes |
@@ -42,12 +44,14 @@ poetry run pytest tests/test_metrics*.py tests/test_persistence*.py tests/test_s
 ### Running Without IBKR Gateway
 
 Use simulation mode for development:
+
 ```bash
 export IBKR_MODE=simulation
 poetry run pytest
 ```
 
 Or in code:
+
 ```python
 from ibkr_core.simulation import SimulatedIBKRClient
 
@@ -201,7 +205,7 @@ curl http://localhost:8000/metrics | jq
 ## Environment Variables Reference
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | ------- | ------------- |
 | `TRADING_MODE` | `paper` | `paper` or `live` |
 | `ORDERS_ENABLED` | `false` | Enable order placement |
 | `IBKR_MODE` | - | Override to `simulation` |
