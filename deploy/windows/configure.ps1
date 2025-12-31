@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Collects required settings and generates .env file for the execution node.
-    Creates directory structure in Google Drive for logs and audit database.
+    Creates directory structure for logs and the audit database.
 
 .PARAMETER NonInteractive
     Skip prompts and use environment variables or defaults.
@@ -115,19 +115,28 @@ $PiIP = Read-HostWithDefault -Prompt "Raspberry Pi IP (allowed to connect)" -Req
 $ApiPort = Read-HostWithDefault -Prompt "API Port" -Default "8000"
 Write-Host ""
 
-# Step 3: Google Drive Path
-Write-Host "Step 3: Google Drive Configuration" -ForegroundColor Yellow
-$defaultGDrive = "G:\My Drive\Coding Projects\trading"
-$GDrivePath = Read-HostWithDefault -Prompt "Google Drive base path for logs/audit" -Default $defaultGDrive -Required
+# Step 3: Storage Path
+Write-Host "Step 3: Storage Configuration" -ForegroundColor Yellow
+Write-Host "Choose where to store logs and audit data (local disk or synced folder)." -ForegroundColor Gray
+$storageType = Read-HostWithDefault -Prompt "Storage type (local/gdrive)" -Default "local"
+$storageType = $storageType.Trim().ToLower()
+$storageLabel = if ($storageType -like "g*") { "Google Drive" } else { "Local" }
 
-# Validate Google Drive path
-if (-not (Test-Path (Split-Path $GDrivePath -Qualifier))) {
-    Write-Host "WARNING: Drive $(Split-Path $GDrivePath -Qualifier) not found. Is Google Drive mounted?" -ForegroundColor Yellow
-    $proceed = Read-HostWithDefault -Prompt "Continue anyway? (y/N)" -Default "N"
-    if ($proceed -ne "y" -and $proceed -ne "Y") {
-        Write-Host "Aborted. Please mount Google Drive and retry." -ForegroundColor Red
-        exit 1
+if ($storageType -like "g*") {
+    $StorageBasePath = Read-HostWithDefault -Prompt "Google Drive base path for logs/audit" -Required
+
+    # Validate drive for synced storage
+    if (-not (Test-Path (Split-Path $StorageBasePath -Qualifier))) {
+        Write-Host "WARNING: Drive $(Split-Path $StorageBasePath -Qualifier) not found. Is the sync drive mounted?" -ForegroundColor Yellow
+        $proceed = Read-HostWithDefault -Prompt "Continue anyway? (y/N)" -Default "N"
+        if ($proceed -ne "y" -and $proceed -ne "Y") {
+            Write-Host "Aborted. Please mount the drive and retry." -ForegroundColor Red
+            exit 1
+        }
     }
+} else {
+    $defaultLocalPath = "C:\ProgramData\mm-ibkr-gateway\storage"
+    $StorageBasePath = Read-HostWithDefault -Prompt "Local base path for logs/audit" -Default $defaultLocalPath -Required
 }
 Write-Host ""
 
@@ -178,14 +187,14 @@ Write-Host ""
 # Create directories
 Write-Host "Creating directories..." -ForegroundColor Cyan
 
-# Google Drive directories
-$LogDir = Join-Path $GDrivePath "logs"
-$AuditDbPath = Join-Path $GDrivePath "audit.db"
-$ArmFilePath = Join-Path $GDrivePath "arm_orders_confirmed.txt"
+# Storage directories
+$LogDir = Join-Path $StorageBasePath "logs"
+$AuditDbPath = Join-Path $StorageBasePath "audit.db"
+$ArmFilePath = Join-Path $StorageBasePath "arm_orders_confirmed.txt"
 
-if (-not (Test-Path $GDrivePath)) {
-    New-Item -ItemType Directory -Path $GDrivePath -Force | Out-Null
-    Write-Host "  Created: $GDrivePath"
+if (-not (Test-Path $StorageBasePath)) {
+    New-Item -ItemType Directory -Path $StorageBasePath -Force | Out-Null
+    Write-Host "  Created: $StorageBasePath"
 }
 if (-not (Test-Path $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
@@ -272,8 +281,8 @@ RUN_WINDOW_TIMEZONE=$RunWindowTimezone
 # PATH SETTINGS
 # =============================================================================
 
-# Google Drive base path
-GDRIVE_BASE_PATH=$GDrivePath
+# Storage base path (local or synced folder)
+GDRIVE_BASE_PATH=$StorageBasePath
 
 # Audit database (SQLite)
 AUDIT_DB_PATH=$AuditDbPath
@@ -334,7 +343,7 @@ Write-Host "Summary:" -ForegroundColor Cyan
 Write-Host "  Repository:      $RepoRoot"
 Write-Host "  API Endpoint:    http://${LanIP}:${ApiPort}"
 Write-Host "  Pi IP:           $PiIP"
-Write-Host "  Google Drive:    $GDrivePath"
+Write-Host "  Storage Path:    $StorageBasePath ($storageLabel)"
 Write-Host "  Trading Mode:    $TradingMode"
 Write-Host "  Orders Enabled:  $OrdersEnabled"
 Write-Host "  Run Window:      $RunWindowDays $RunWindowStart - $RunWindowEnd ($RunWindowTimezone)"

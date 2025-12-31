@@ -121,9 +121,9 @@ if ($apiListening) {
 Write-Host "CONFIGURATION" -ForegroundColor White
 Write-Host "  Trading Mode:    $env:TRADING_MODE"
 Write-Host "  Orders Enabled:  $env:ORDERS_ENABLED"
-Write-Host "  Google Drive:    $env:GDRIVE_BASE_PATH"
+Write-Host "  Storage Path:    $env:GDRIVE_BASE_PATH"
 
-# Check Google Drive accessibility
+# Check storage path accessibility
 if ($env:GDRIVE_BASE_PATH) {
     if (Test-Path $env:GDRIVE_BASE_PATH) {
         Write-Host "  Drive Status:    " -NoNewline

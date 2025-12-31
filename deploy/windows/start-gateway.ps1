@@ -78,11 +78,11 @@ if (-not (Test-Path $gatewayExe)) {
 
 Write-Host "Starting: $gatewayExe" -ForegroundColor Gray
 
-# Check Google Drive is accessible (fail-safe)
+# Check storage path is accessible (fail-safe)
 $gdrivePath = $env:GDRIVE_BASE_PATH
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
-    Write-Host "ERROR: Google Drive path not accessible: $gdrivePath" -ForegroundColor Red
-    Write-Host "Is Google Drive mounted? Will not start gateway without log/audit storage." -ForegroundColor Yellow
+    Write-Host "ERROR: Storage path not accessible: $gdrivePath" -ForegroundColor Red
+    Write-Host "Is the storage path mounted/available? Will not start gateway without log/audit storage." -ForegroundColor Yellow
     exit 1
 }
 
