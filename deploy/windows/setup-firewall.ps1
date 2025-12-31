@@ -31,7 +31,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 
 # Source common functions
-. (Join-Path $ScriptDir "lib\common.ps1")
+. (Join-Path $ScriptDir "utils\common.ps1")
 
 Write-Host "`n=== Windows Firewall Setup ===" -ForegroundColor Cyan
 

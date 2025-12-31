@@ -31,7 +31,7 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 $StateDir = "C:\ProgramData\mm-ibkr-gateway"
 
 # Source common functions
-. (Join-Path $ScriptDir "lib\common.ps1")
+. (Join-Path $ScriptDir "utils\common.ps1")
 
 Write-Host "`n=== Starting IBKR Gateway ===" -ForegroundColor Cyan
 
