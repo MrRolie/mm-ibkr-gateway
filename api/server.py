@@ -244,7 +244,7 @@ async def schedule_status():
     Schedule status endpoint.
 
     Returns the current schedule configuration and whether we're
-    within the run window. Useful for the Pi to check if the 
+    within the run window. Useful for the Pi to check if the
     execution node should be active.
     """
     return get_window_status()

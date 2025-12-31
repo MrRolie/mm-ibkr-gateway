@@ -31,10 +31,7 @@ class TestScheduleConfig:
     def test_custom_config(self):
         """Test custom configuration values."""
         config = ScheduleConfig(
-            start_time="09:30",
-            end_time="16:00",
-            days="Mon,Wed,Fri",
-            timezone="America/New_York"
+            start_time="09:30", end_time="16:00", days="Mon,Wed,Fri", timezone="America/New_York"
         )
         assert config.start_time == time(9, 30)
         assert config.end_time == time(16, 0)
@@ -43,12 +40,15 @@ class TestScheduleConfig:
 
     def test_from_env(self):
         """Test loading config from environment."""
-        with patch.dict("os.environ", {
-            "RUN_WINDOW_START": "08:00",
-            "RUN_WINDOW_END": "18:00",
-            "RUN_WINDOW_DAYS": "Mon,Tue,Wed",
-            "RUN_WINDOW_TIMEZONE": "UTC"
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "RUN_WINDOW_START": "08:00",
+                "RUN_WINDOW_END": "18:00",
+                "RUN_WINDOW_DAYS": "Mon,Tue,Wed",
+                "RUN_WINDOW_TIMEZONE": "UTC",
+            },
+        ):
             config = ScheduleConfig.from_env()
             assert config.start_time == time(8, 0)
             assert config.end_time == time(18, 0)
@@ -66,27 +66,21 @@ class TestIsWithinRunWindow:
     def test_within_window_weekday(self):
         """Test time within window on a weekday."""
         config = ScheduleConfig(
-            start_time="09:00",
-            end_time="17:00",
-            days="Mon,Tue,Wed,Thu,Fri",
-            timezone="UTC"
+            start_time="09:00", end_time="17:00", days="Mon,Tue,Wed,Thu,Fri", timezone="UTC"
         )
-        
+
         # Monday at 12:00 UTC
         with patch("ibkr_core.schedule.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2024, 1, 1, 12, 0, tzinfo=ZoneInfo("UTC"))  # Monday
             # Need to also mock the datetime class itself for comparison
             mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
-            
+
         # Use actual function with mocked time
         test_time = datetime(2024, 1, 1, 12, 0, tzinfo=ZoneInfo("UTC"))  # Monday
         config = ScheduleConfig(
-            start_time="09:00",
-            end_time="17:00",
-            days="Mon,Tue,Wed,Thu,Fri",
-            timezone="UTC"
+            start_time="09:00", end_time="17:00", days="Mon,Tue,Wed,Thu,Fri", timezone="UTC"
         )
-        
+
         # Weekday (Monday = 0) and time (12:00) is within 09:00-17:00
         assert 0 in config.days
         assert config.start_time <= test_time.time() < config.end_time
@@ -94,12 +88,9 @@ class TestIsWithinRunWindow:
     def test_outside_window_wrong_day(self):
         """Test time on a weekend when only weekdays configured."""
         config = ScheduleConfig(
-            start_time="09:00",
-            end_time="17:00",
-            days="Mon,Tue,Wed,Thu,Fri",
-            timezone="UTC"
+            start_time="09:00", end_time="17:00", days="Mon,Tue,Wed,Thu,Fri", timezone="UTC"
         )
-        
+
         # Saturday is weekday 5, not in config.days
         assert 5 not in config.days
         assert 6 not in config.days
@@ -107,24 +98,18 @@ class TestIsWithinRunWindow:
     def test_outside_window_too_early(self):
         """Test time before window start."""
         config = ScheduleConfig(
-            start_time="09:00",
-            end_time="17:00",
-            days="Mon,Tue,Wed,Thu,Fri",
-            timezone="UTC"
+            start_time="09:00", end_time="17:00", days="Mon,Tue,Wed,Thu,Fri", timezone="UTC"
         )
-        
+
         early_time = time(8, 0)
         assert early_time < config.start_time
 
     def test_outside_window_too_late(self):
         """Test time after window end."""
         config = ScheduleConfig(
-            start_time="09:00",
-            end_time="17:00",
-            days="Mon,Tue,Wed,Thu,Fri",
-            timezone="UTC"
+            start_time="09:00", end_time="17:00", days="Mon,Tue,Wed,Thu,Fri", timezone="UTC"
         )
-        
+
         late_time = time(18, 0)
         assert late_time >= config.end_time
 
@@ -170,7 +155,7 @@ class TestGetWindowStatus:
         """Test that status returns all required keys."""
         config = ScheduleConfig()
         status = get_window_status(config)
-        
+
         required_keys = [
             "current_time",
             "timezone",
@@ -179,7 +164,7 @@ class TestGetWindowStatus:
             "window_end",
             "active_days",
         ]
-        
+
         for key in required_keys:
             assert key in status
 
@@ -187,7 +172,7 @@ class TestGetWindowStatus:
         """Test that active_days is properly formatted."""
         config = ScheduleConfig(days="Mon,Wed,Fri")
         status = get_window_status(config)
-        
+
         assert isinstance(status["active_days"], list)
         assert "Mon" in status["active_days"]
         assert "Wed" in status["active_days"]
@@ -197,6 +182,6 @@ class TestGetWindowStatus:
         """Test that window times are in HH:MM format."""
         config = ScheduleConfig(start_time="04:00", end_time="20:00")
         status = get_window_status(config)
-        
+
         assert status["window_start"] == "04:00"
         assert status["window_end"] == "20:00"

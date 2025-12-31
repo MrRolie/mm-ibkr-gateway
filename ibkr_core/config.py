@@ -54,7 +54,7 @@ class Config:
     # Path settings
     gdrive_base_path: Optional[str]
     log_file_path: Optional[str]
-    
+
     # Arm file for orders (additional safety layer)
     arm_orders_file: Optional[str]
 
