@@ -58,9 +58,9 @@ from api.models import (
     QuoteRequest,
 )
 from ibkr_core.config import get_config
-from ibkr_core.schedule import get_window_status
 from ibkr_core.logging_config import configure_logging
 from ibkr_core.metrics import get_metrics
+from ibkr_core.schedule import get_window_status
 
 # Configure structured logging with correlation IDs
 configure_logging()
