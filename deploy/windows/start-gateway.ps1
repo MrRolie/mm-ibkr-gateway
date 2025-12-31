@@ -186,15 +186,22 @@ if ($agentEnabled) {
 
 try {
     # Launch gateway; default minimized, optionally visible for debugging
-    $windowStyle = if ($ShowWindow) { "Normal" } else { "Minimized" }
+    $showFromEnv = $false
+    if ($env:GATEWAY_SHOW_WINDOW) { [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$showFromEnv) | Out-Null }
+    $effectiveShow = $ShowWindow -or $showFromEnv
+    $windowStyle = if ($effectiveShow) { $null } else { "Minimized" }
     # Force jts config directory so gateway reads the user jts.ini we manage
     $jtsArg = "-J-DjtsConfigDir=$jtsConfigDir"
 
-    $process = Start-Process -FilePath $gatewayExe `
-        -WorkingDirectory $gatewayPath `
-        -WindowStyle $windowStyle `
-        -ArgumentList $jtsArg `
-        -PassThru
+    $startParams = @{
+        FilePath        = $gatewayExe
+        WorkingDirectory= $gatewayPath
+        ArgumentList    = $jtsArg
+        PassThru        = $true
+    }
+    if ($windowStyle) { $startParams.WindowStyle = $windowStyle }
+
+    $process = Start-Process @startParams
     Write-Host "IBKR Gateway started (PID: $($process.Id))" -ForegroundColor Green
     
     # Log startup

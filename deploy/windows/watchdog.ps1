@@ -36,29 +36,6 @@ Write-Log "Watchdog started" "INFO"
 # Check if within run window
 $inWindow = Test-RunWindow
 
-if (-not $inWindow) {
-    Write-Log "Outside run window - enforcing stopped state" "INFO"
-    
-    # Stop API if running
-    $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
-    if ($apiListening) {
-        Write-Log "Stopping API (outside run window)" "INFO"
-        & (Join-Path $ScriptDir "stop-api.ps1")
-    }
-    
-    # Stop Gateway if running
-    $gatewayRunning = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
-    if ($gatewayRunning) {
-        Write-Log "Stopping Gateway (outside run window)" "INFO"
-        & (Join-Path $ScriptDir "stop-gateway.ps1")
-    }
-    
-    Write-Log "Watchdog complete (services stopped - outside window)" "INFO"
-    exit 0
-}
-
-# We're in the run window - check services
-
 # Check storage path first
 $gdrivePath = $env:GDRIVE_BASE_PATH
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
@@ -67,10 +44,11 @@ if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
     exit 1
 }
 
-# Check IBKR Gateway
+# ==============================================================================
+# GATEWAY: Monitor 24/7, restart if unhealthy (IB handles daily soft restart)
+# ==============================================================================
 $gatewayRunning = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
 $gatewayListening = Get-NetTCPConnection -LocalPort $gatewayPort -State Listen -ErrorAction SilentlyContinue
-
 $gatewayHealthy = $gatewayRunning -and $gatewayListening
 
 if (-not $gatewayHealthy) {
@@ -85,8 +63,12 @@ if (-not $gatewayHealthy) {
             Start-Sleep -Seconds 3
         }
         
-        # Start gateway
-        & (Join-Path $ScriptDir "start-gateway.ps1") -Force
+        # Start gateway - respect GATEWAY_SHOW_WINDOW setting
+        $startArgs = @("-Force")
+        $showWindow = $false
+        if ($env:GATEWAY_SHOW_WINDOW) { [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$showWindow) | Out-Null }
+        if ($showWindow) { $startArgs += "-ShowWindow" }
+        & (Join-Path $ScriptDir "start-gateway.ps1") @startArgs
         Update-RestartCount -Service "gateway"
         
         # Wait for gateway to be ready
@@ -96,7 +78,25 @@ if (-not $gatewayHealthy) {
     }
 }
 
-# Check API
+# ==============================================================================
+# API: Enforce run window - stop outside, monitor/restart inside
+# ==============================================================================
+if (-not $inWindow) {
+    Write-Log "Outside run window - enforcing API stopped" "INFO"
+    
+    # Stop API if running
+    $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
+    if ($apiListening) {
+        Write-Log "Stopping API (outside run window)" "INFO"
+        & (Join-Path $ScriptDir "stop-api.ps1")
+    }
+    
+    Write-Log "Watchdog complete (Gateway: running 24/7, API: stopped outside window)" "INFO"
+    exit 0
+}
+
+# Inside run window - check API health
+
 $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
 $apiHealthy = $false
 
@@ -115,9 +115,9 @@ if ($apiListening) {
 }
 
 if (-not $apiHealthy) {
-    Write-Log "API is not healthy" "WARN"
+    Write-Log "API is not healthy (inside run window)" "WARN"
     
-    # Check if gateway is now healthy (after potential restart above)
+    # Check if gateway is healthy (after potential restart above)
     $gatewayListening = Get-NetTCPConnection -LocalPort $gatewayPort -State Listen -ErrorAction SilentlyContinue
     
     if (-not $gatewayListening) {
