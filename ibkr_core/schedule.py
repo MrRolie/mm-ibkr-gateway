@@ -7,7 +7,7 @@ run window, and to calculate next window start/end times.
 
 import os
 from datetime import datetime, time, timedelta
-from typing import Optional, Tuple
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 
