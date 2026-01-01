@@ -64,11 +64,12 @@ if (-not $gatewayHealthy) {
         }
         
         # Start gateway - respect GATEWAY_SHOW_WINDOW setting
-        $startArgs = @("-Force")
         $showWindow = $false
         if ($env:GATEWAY_SHOW_WINDOW) { [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$showWindow) | Out-Null }
-        if ($showWindow) { $startArgs += "-ShowWindow" }
-        & (Join-Path $ScriptDir "start-gateway.ps1") @startArgs
+        
+        $gwParams = @{ Force = $true }
+        if ($showWindow) { $gwParams["ShowWindow"] = $true }
+        & (Join-Path $ScriptDir "start-gateway.ps1") @gwParams
         Update-RestartCount -Service "gateway"
         
         # Wait for gateway to be ready
@@ -106,8 +107,24 @@ if ($apiListening) {
         $healthUrl = "http://${apiHost}:${apiPort}/health"
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 10 -ErrorAction Stop
         if ($response.status -eq "ok" -or $response.status -eq "degraded") {
-            $apiHealthy = $true
-            Write-Log "API health check passed: $($response.status)" "INFO"
+            # Health endpoint passed, but verify with a real API call
+            # Edge case: API can report "ok" but actual endpoints return 500
+            try {
+                $apiKey = $env:API_KEY
+                $headers = @{}
+                if ($apiKey) { $headers["X-API-Key"] = $apiKey }
+                
+                $testUrl = "http://${apiHost}:${apiPort}/account/summary"
+                $testResp = Invoke-RestMethod -Uri $testUrl -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+                
+                # Real endpoint works
+                $apiHealthy = $true
+                Write-Log "API health check passed: endpoints working" "INFO"
+            } catch {
+                # Health check passed but actual endpoint failed - restart needed
+                Write-Log "API health endpoint ok but endpoints failing: $_" "WARN"
+                $apiHealthy = $false
+            }
         }
     } catch {
         Write-Log "API health check failed: $_" "WARN"
