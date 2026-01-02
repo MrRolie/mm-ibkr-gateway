@@ -111,12 +111,14 @@
 | `/api/orders/{orderId}/cancel` | POST | Cancel order (gated) |
 
 **Request validation**:
+
 - Pydantic models enforce schema before business logic
 - 400 Bad Request for invalid input
 - 401 Unauthorized for missing API key
 - 422 Unprocessable Entity for validation failure
 
 **Error handling**:
+
 - HTTP status code maps to error code
 - Response body includes error code, message, details
 - See `api/errors.py` for full code set
@@ -139,6 +141,7 @@
 | `cancel_order` | Cancel order (gated) | POST `/api/orders/{orderId}/cancel` |
 
 **Design**:
+
 - `main.py`: FastMCP server, tool definitions
 - `http_client.py`: HTTP client to REST API
 - `config.py`: MCP-specific config
@@ -198,6 +201,7 @@ HTTP 200 + OrderResult (status=ACCEPTED or FILLED)
 ```
 
 **Safety gates**:
+
 1. `config.trading_mode == "paper"` → simulate
 2. `config.orders_enabled == False` → simulate
 3. `config.trading_mode == "live" and config.orders_enabled == True`:
@@ -224,6 +228,7 @@ await loop.run_in_executor(self.executor, ib_insync_call, *args)
 ### API Request Concurrency
 
 FastAPI handles multiple concurrent requests via Uvicorn workers. Each request:
+
 - Gets its own correlation ID (UUID)
 - Shares the single IBKR client (thread-safe via executor)
 - Logs with correlation ID for tracing
@@ -321,6 +326,7 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
 Lifespan events in `api.dependencies.py`:
+
 - `lifespan_context()`: Creates client on startup, closes on shutdown
 - `get_client_manager()`: Returns shared client instance
 
@@ -408,6 +414,7 @@ Client sees APIError response with code + message
 - **No external I/O**: Tests run with `TRADING_MODE=paper`, `ORDERS_ENABLED=false`
 
 **Run without integrations**:
+
 ```bash
 pytest tests/ -m "not integration"
 ```
@@ -451,6 +458,7 @@ pytest tests/ -m "not integration"
 ### Contract Changes
 
 When adding a new field to an API response:
+
 1. Make it **optional** (`Optional[type]`)
 2. Provide sensible default in Pydantic model
 3. Update audit log schema if persisting
@@ -459,6 +467,7 @@ When adding a new field to an API response:
 ### Order Lifecycle Changes
 
 Order status values are **append-only**. Never remove or rename:
+
 - `SUBMITTED`, `ACCEPTED`, `FILLED`, `CANCELLED`, `REJECTED` are permanent
 
 ---

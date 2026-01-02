@@ -27,12 +27,14 @@ class SymbolSpec(BaseModel):
 ```
 
 **Validation**:
+
 - `securityType` in {"STK", "ETF", "FUT", "OPT", "IND", "CASH", "CFD", "BOND", "FUND", "CRYPTO"}
 - `right` in {"C", "P"} or None
 - `expiry` matches `YYYY-MM-DD` if provided
 - `strike` >= 0 if provided
 
 **Example**:
+
 ```json
 {"symbol": "AAPL", "securityType": "STK"}
 {"symbol": "MES", "securityType": "FUT", "expiry": "2025-01-17"}
@@ -78,6 +80,7 @@ class OrderSpecRequest(BaseModel):
 ```
 
 **Validation**:
+
 - `action` in {"BUY", "SELL"}
 - `quantity` >= 1
 - `orderType` in {"MKT", "LMT", "STP", "STP_LMT", "MOC", "OPG"}
@@ -107,6 +110,7 @@ class Quote(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "symbol": "AAPL",
@@ -139,6 +143,7 @@ class Bar(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "symbol": "SPY",
@@ -171,6 +176,7 @@ class Position(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "accountId": "DU123456",
@@ -203,6 +209,7 @@ class AccountSummary(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "accountId": "DU123456",
@@ -240,6 +247,7 @@ class AccountPnL(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "accountId": "DU123456",
@@ -273,6 +281,7 @@ class OrderResult(BaseModel):
 ```
 
 **Example**:
+
 ```json
 {
   "orderId": 1001,
@@ -352,6 +361,7 @@ CREATE INDEX idx_audit_timestamp ON audit_log(timestamp);
 ```
 
 **event_type values**:
+
 - `ORDER_PLACED`: User-initiated order placement
 - `ORDER_ACCEPTED`: Broker accepted order
 - `ORDER_FILLED`: Partial or full fill
@@ -361,6 +371,7 @@ CREATE INDEX idx_audit_timestamp ON audit_log(timestamp);
 **Uniqueness**: `(correlation_id, event_type, timestamp)` prevents duplicate entries for same order action in same request.
 
 **Example row**:
+
 ```sql
 INSERT INTO audit_log (correlation_id, timestamp, event_type, event_data, user_context, account_id)
 VALUES (
@@ -400,6 +411,7 @@ CREATE INDEX idx_order_history_placed_at ON order_history(placed_at);
 **Invariant**: Primary key is `order_id` (unique per order). Never update rows; append new events to `audit_log`.
 
 **Example row**:
+
 ```sql
 INSERT INTO order_history (order_id, symbol, action, quantity, order_type, status, filled, avg_fill_price, commission, placed_at, updated_at, config_snapshot)
 VALUES (
@@ -431,6 +443,7 @@ VALUES (
 5. **Test**: Ensure old clients still work (field missing in request)
 
 **Example**:
+
 ```python
 # Old API
 class Quote(BaseModel):
@@ -471,6 +484,7 @@ If type must change (e.g., `int` → `str`), create new field and deprecate old.
 ### Enum Values (Status, Action, etc.)
 
 **Append-only**. Never remove or rename existing values:
+
 - `status` in {"SUBMITTED", "ACCEPTED", "FILLED", "CANCELLED", "REJECTED", "SIMULATED"}
 - `action` in {"BUY", "SELL"}
 - `orderType` in {"MKT", "LMT", "STP", "STP_LMT", "MOC", "OPG"}

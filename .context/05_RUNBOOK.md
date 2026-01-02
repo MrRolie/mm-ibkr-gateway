@@ -174,6 +174,7 @@ curl -X POST http://localhost:8000/api/orders/1001/cancel | jq '.'
 ### Scenario 1: IBKR Gateway Disconnected
 
 **Symptom**:
+
 ```
 $ ibkr-gateway healthcheck
 [ERROR] IBKR Gateway not detected on localhost:4002
@@ -182,6 +183,7 @@ $ ibkr-gateway healthcheck
 **Root Cause**: TWS/Gateway not running or API disabled.
 
 **Recovery**:
+
 ```bash
 # 1. Restart IBKR Gateway (manual application)
 # 2. Verify API settings enabled (Configure → API → Settings)
@@ -204,6 +206,7 @@ poetry run python -c "from ibkr_core.contracts import clear_cache; clear_cache()
 ### Scenario 2: Order Not Found
 
 **Symptom**:
+
 ```
 $ curl http://localhost:8000/api/orders/9999/status
 {"error": "Order 9999 not found"}
@@ -212,6 +215,7 @@ $ curl http://localhost:8000/api/orders/9999/status
 **Root Cause**: Order ID doesn't exist, or order from previous session (not persisted).
 
 **Recovery**:
+
 ```bash
 # 1. Verify order was actually placed
 sqlite3 data/audit.db "SELECT * FROM audit_log WHERE event_type='ORDER_PLACED'"
@@ -233,6 +237,7 @@ sqlite3 data/audit.db "SELECT * FROM order_history WHERE order_id=9999"
 ### Scenario 3: Position Mismatch
 
 **Symptom**:
+
 ```
 # Your code shows: 100 AAPL
 # IBKR account shows: 95 AAPL
@@ -241,6 +246,7 @@ sqlite3 data/audit.db "SELECT * FROM order_history WHERE order_id=9999"
 **Root Cause**: Fill not captured, duplicate order, or manual adjustment on broker side.
 
 **Recovery**:
+
 ```bash
 # 1. Immediate: Halt trading (set ORDERS_ENABLED=false)
 
@@ -275,6 +281,7 @@ UPDATE order_history SET quantity = 95 WHERE symbol = 'AAPL'
 ### Scenario 4: Stale Contract Cache
 
 **Symptom**:
+
 ```
 # Symbol DEAD (delisted) still resolves, causing orders to fail at IBKR
 ```
@@ -282,6 +289,7 @@ UPDATE order_history SET quantity = 95 WHERE symbol = 'AAPL'
 **Root Cause**: Contract cached at session start; symbol delisted intraday.
 
 **Recovery**:
+
 ```bash
 # 1. Clear contract cache
 # (Cache is in-memory; restart service to clear)
@@ -295,7 +303,8 @@ poetry run python -c "from ibkr_core.contracts import clear_cache; clear_cache()
 # → Order will be rejected by IBKR with clear error
 ```
 
-**Prevention**: 
+**Prevention**:
+
 - Restart service daily during non-trading hours
 - Monitor resolution errors in logs
 
@@ -304,6 +313,7 @@ poetry run python -c "from ibkr_core.contracts import clear_cache; clear_cache()
 ### Scenario 5: Config Mismatch (Live Trading Enabled Unintentionally)
 
 **Symptom**:
+
 ```
 # Orders now executing in live account instead of simulated!
 $ ibkr-gateway healthcheck
@@ -313,6 +323,7 @@ $ ibkr-gateway healthcheck
 **Root Cause**: `.env` was modified, or override file was accidentally created.
 
 **Recovery**:
+
 ```bash
 # IMMEDIATE (Stop the bleeding)
 # 1. Delete override file
@@ -520,6 +531,7 @@ sqlite3 data/audit.db "SELECT * FROM audit_log WHERE event_type='ORDER_FILLED' O
 **Safe by default**: All operations in paper mode are simulated.
 
 **Always verify**:
+
 - TRADING_MODE before running
 - Override file doesn't exist unless intentional
 - Audit log for unexpected orders

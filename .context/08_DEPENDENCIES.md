@@ -9,12 +9,14 @@
 **Purpose**: Python wrapper for Interactive Brokers API
 
 **Key Classes**:
+
 - `ib_insync.IB`: Main client
 - `ib_insync.Contract`: Security contract
 - `ib_insync.Order`: Order object
 - `ib_insync.Ticker`: Market data ticker
 
 **Usage in Project**:
+
 ```python
 from ib_insync import IB, Contract, Order
 
@@ -32,18 +34,21 @@ oid = self.ib.placeOrder(contract, order)
 ```
 
 **Connection Settings**:
+
 - **Host**: Configurable via `IBKR_GATEWAY_HOST` (default: `localhost`)
 - **Port**: `4002` (paper), `4001` (live) - configurable
 - **Client ID**: Unique per connection
 - **Auto-reconnect**: ib_insync handles reconnection logic
 
 **Rate Limits**:
+
 - Market data: Unlimited (subject to IBKR subscriptions)
 - Order operations: 50/second (soft limit, enforced by broker)
 - Account queries: Unlimited
 - Contract resolution: 100/second (recommended)
 
 **Error Handling**:
+
 ```python
 try:
     contract = self.ib.qualifyContracts(contract)[0]
@@ -58,12 +63,14 @@ except (ib_insync.ContractError, ib_insync.ConnectionError) as e:
 **Purpose**: REST API framework
 
 **Key Components**:
+
 - `FastAPI` app instance
 - `@app.get()`, `@app.post()` decorators
 - `Depends()` for dependency injection
 - Built-in OpenAPI documentation at `/docs`
 
 **Usage**:
+
 ```python
 from fastapi import FastAPI, Depends
 from api.dependencies import get_ibkr_client
@@ -95,6 +102,7 @@ async def place_order(
 **Purpose**: ASGI server for FastAPI
 
 **Usage**:
+
 ```bash
 # Via CLI
 poetry run ibkr-gateway start-api --host 0.0.0.0 --port 8000
@@ -104,6 +112,7 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 **Configuration**:
+
 - `--workers`: Number of worker processes (default 1)
 - `--reload`: Auto-reload on code change (development only)
 - `--log-level`: debug, info, warning, error
@@ -115,12 +124,14 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000 --workers 4
 **Purpose**: Data validation and serialization
 
 **Key Features**:
+
 - Field validation (type checking, constraints)
 - JSON serialization/deserialization
 - OpenAPI schema generation
 - Custom validators
 
 **Usage**:
+
 ```python
 from pydantic import BaseModel, Field, field_validator
 
@@ -148,10 +159,12 @@ json_data = spec.model_dump_json()
 **Purpose**: Model Context Protocol server for Claude integration
 
 **Key Classes**:
+
 - `FastMCP`: Server class
 - `Tool`: Decorator for tool definitions
 
 **Usage**:
+
 ```python
 from mcp.server.fastmcp import FastMCP
 
@@ -168,6 +181,7 @@ mcp.run(transport="stdio")  # Or HTTP
 ```
 
 **Connection**:
+
 - Connects to IBKR REST API at `http://localhost:8000`
 - 8 tools exposed: quote, historical data, account status, P&L, orders
 
@@ -180,10 +194,12 @@ mcp.run(transport="stdio")  # Or HTTP
 **Purpose**: Testing framework
 
 **Plugins**:
+
 - `pytest-asyncio`: Async test support
 - `pytest-cov`: Code coverage reporting
 
 **Usage**:
+
 ```bash
 poetry run pytest tests/ -v
 poetry run pytest tests/ --cov=ibkr_core
@@ -196,6 +212,7 @@ poetry run pytest tests/ --cov=ibkr_core
 **Purpose**: Code formatter
 
 **Configuration** (in `pyproject.toml`):
+
 ```toml
 [tool.black]
 line-length = 100
@@ -203,6 +220,7 @@ target-version = ["py310"]
 ```
 
 **Usage**:
+
 ```bash
 poetry run black ibkr_core/ api/
 ```
@@ -214,6 +232,7 @@ poetry run black ibkr_core/ api/
 **Purpose**: Import organization
 
 **Configuration** (in `pyproject.toml`):
+
 ```toml
 [tool.isort]
 profile = "black"
@@ -221,6 +240,7 @@ line_length = 100
 ```
 
 **Usage**:
+
 ```bash
 poetry run isort ibkr_core/ api/
 ```
@@ -232,6 +252,7 @@ poetry run isort ibkr_core/ api/
 **Purpose**: Static type checker
 
 **Configuration** (in `pyproject.toml`):
+
 ```toml
 [tool.mypy]
 python_version = "3.10"
@@ -240,6 +261,7 @@ warn_return_any = true
 ```
 
 **Usage**:
+
 ```bash
 poetry run mypy ibkr_core/ api/
 ```
@@ -255,7 +277,8 @@ poetry run mypy ibkr_core/ api/
 **Not a Dependency Package**: External application that must be running
 
 **How to Get**:
-1. Download IBKR Gateway from https://www.ibkr.com/trading/platforms/gateway
+
+1. Download IBKR Gateway from <https://www.ibkr.com/trading/platforms/gateway>
 2. Or use TWS (Trader Workstation)
 3. Enable API in settings (Configure → API → Settings)
 4. Ensure paper trading account enabled
@@ -275,6 +298,7 @@ poetry run mypy ibkr_core/ api/
 **Purpose**: Load environment variables from `.env` file
 
 **Usage**:
+
 ```python
 from dotenv import load_dotenv
 load_dotenv(".env")
@@ -290,6 +314,7 @@ trading_mode = os.environ.get("TRADING_MODE", "paper")
 **Purpose**: Enhanced logging with better formatting
 
 **Usage**:
+
 ```python
 from loguru import logger
 
@@ -306,6 +331,7 @@ logger.info("Order placed", symbol="AAPL")
 **Purpose**: Pretty console output (CLI)
 
 **Usage**:
+
 ```python
 from rich.table import Table
 from rich.console import Console
@@ -324,6 +350,7 @@ console.print(table)
 **Purpose**: CLI framework (used for `ibkr-gateway` commands)
 
 **Usage**:
+
 ```python
 from typer import Typer
 
@@ -353,6 +380,7 @@ if __name__ == "__main__":
 **Purpose**: Structured JSON logging for production
 
 **Usage**:
+
 ```python
 from pythonjsonlogger import jsonlogger
 import logging
@@ -420,18 +448,22 @@ mm-ibkr-gateway (root)
 ### IBKR API (via ib_insync)
 
 **Market Data Requests**:
+
 - **Unlimited** (subject to subscriptions)
 - Typical: <100ms per quote
 
 **Order Operations**:
+
 - Soft limit: 50 orders/second
 - Hard limit enforced by broker
 
 **Account Queries**:
+
 - Unlimited
 - Cached locally for 60 seconds
 
 **Contract Resolution**:
+
 - Recommended: 100/second
 - Caches results in-memory
 
@@ -451,6 +483,7 @@ localhost:8000      localhost:8000  (in-process)  localhost:4002
 ```
 
 **Data Flow**:
+
 1. Claude queries MCP tool
 2. MCP tool calls HTTP client
 3. HTTP client POST/GET to REST API

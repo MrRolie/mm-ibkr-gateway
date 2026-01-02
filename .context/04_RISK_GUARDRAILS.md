@@ -54,11 +54,13 @@ if self.trading_mode == "live" and self.orders_enabled:
 ```
 
 **Invariant**: Live trading + orders enabled REQUIRES:
+
 1. Explicit `LIVE_TRADING_OVERRIDE_FILE` path in `.env`
 2. File must physically exist on disk
 3. Prevents typos and accidental enables
 
 **Procedure to enable**:
+
 ```bash
 # 1. Create the file
 touch ~/ibkr_live_trading_confirmed.txt
@@ -95,6 +97,7 @@ def place_order_internal(...) -> OrderResult:
 ```
 
 **Invariant**: Order placement simulates UNLESS **all three** conditions true:
+
 1. `TRADING_MODE=live`
 2. `ORDERS_ENABLED=true`
 3. Override file exists (checked at startup)
@@ -156,12 +159,14 @@ def log_order_action(order_detail: OrderDetail, config: Config) -> None:
 ```
 
 **Invariant**: Every order action logged with:
+
 - Correlation ID (request tracing)
 - Timestamp (UTC, ISO 8601)
 - Full order spec + result
 - Config snapshot (TRADING_MODE, ORDERS_ENABLED at order time)
 
 **Query for history**:
+
 ```python
 # See all orders placed today
 order_history = query_audit_log(
@@ -177,6 +182,7 @@ order_history = query_audit_log(
 ### ❌ DO NOT
 
 1. **Store floats for cash/P&L**
+
    ```python
    # WRONG
    balance = 10250.50  # float - precision loss
@@ -186,6 +192,7 @@ order_history = query_audit_log(
    ```
 
 2. **Modify audit log rows**
+
    ```python
    # WRONG
    cursor.execute("UPDATE audit_log SET status = 'FILLED' WHERE orderId = 1001")
@@ -195,6 +202,7 @@ order_history = query_audit_log(
    ```
 
 3. **Trust env vars without validation**
+
    ```python
    # WRONG
    trading_mode = os.environ.get("TRADING_MODE", "paper")  # Might be typo: "papeer"
@@ -206,6 +214,7 @@ order_history = query_audit_log(
    ```
 
 4. **Bypass order validation**
+
    ```python
    # WRONG
    place_real_order(OrderSpec(quantity=-100))  # Negative quantity!
@@ -216,6 +225,7 @@ order_history = query_audit_log(
    ```
 
 5. **Skip deterministic order ID**
+
    ```python
    # WRONG
    orderId = random.randint(0, 999999)  # Can't replay, duplicates possible
@@ -225,6 +235,7 @@ order_history = query_audit_log(
    ```
 
 6. **Mix currencies without conversion**
+
    ```python
    # WRONG
    usd_value = 100
@@ -237,6 +248,7 @@ order_history = query_audit_log(
    ```
 
 7. **Allow order placement without correlation ID**
+
    ```python
    # WRONG
    place_order(spec)  # Can't trace in audit log
@@ -247,6 +259,7 @@ order_history = query_audit_log(
    ```
 
 8. **Cache contracts longer than session**
+
    ```python
    # WRONG
    # Contract resolved at startup, used all day
@@ -258,6 +271,7 @@ order_history = query_audit_log(
    ```
 
 9. **Place orders in paper mode manually**
+
    ```python
    # WRONG
    if config.trading_mode == "paper":
@@ -271,6 +285,7 @@ order_history = query_audit_log(
    ```
 
 10. **Remove or rename order status values**
+
     ```python
     # WRONG
     # Change status from "FILLED" to "COMPLETED" in code
@@ -292,6 +307,7 @@ order_history = query_audit_log(
 **Why**: Reduces IBKR API calls during development; prevents stale cache issues.
 
 **Enforcement**:
+
 ```python
 # In ibkr_core/contracts.py
 contract_cache: Dict[str, Contract] = {}  # In-memory, session-only
@@ -309,6 +325,7 @@ def resolve_contract(spec: SymbolSpec) -> Contract:
 ```
 
 **Implications**:
+
 - Restart client to refresh contracts
 - Delisted symbols cache stale contracts until restart
 - Multi-session environments should clear cache periodically
@@ -322,6 +339,7 @@ def resolve_contract(spec: SymbolSpec) -> Contract:
 **Why**: Prevents silently lost fills, phantom positions.
 
 **Enforcement**:
+
 ```python
 # In ibkr_core/account.py
 def get_positions() -> List[Position]:
@@ -347,6 +365,7 @@ def get_positions() -> List[Position]:
 **Why**: Enables idempotent retries; prevents duplicate fills.
 
 **Enforcement**:
+
 ```python
 # In ibkr_core/orders.py
 def generate_order_id(spec: OrderSpec) -> int:
@@ -357,6 +376,7 @@ def generate_order_id(spec: OrderSpec) -> int:
 ```
 
 **Implication**: If user retries same order twice:
+
 1. First call: orderId=X, placed
 2. Second call: orderId=X, rejected as duplicate (IBKR)
 3. Query status: Shows original fill
@@ -370,6 +390,7 @@ def generate_order_id(spec: OrderSpec) -> int:
 **Why**: Eliminates ambiguity, enables global trading.
 
 **Enforcement**:
+
 ```python
 # In ibkr_core/logging_config.py
 from datetime import datetime, timezone
@@ -388,6 +409,7 @@ def log_order_action(...):
 **Why**: Prevents floating-point arithmetic errors (classic bug: 0.1 + 0.2 != 0.3 in floats).
 
 **Enforcement**:
+
 ```python
 # In ibkr_core/models.py
 from decimal import Decimal
@@ -428,6 +450,7 @@ class Position(BaseModel):
 **Symptom**: Orders showing `status=ACCEPTED` instead of `SIMULATED`.
 
 **Response**:
+
 ```bash
 # 1. Immediate: Delete override file
 rm ~/ibkr_live_trading_confirmed.txt
@@ -449,6 +472,7 @@ sqlite3 data/audit.db "SELECT * FROM audit_log WHERE event_type='ORDER_PLACED' A
 **Symptom**: "Position mismatch: IBKR=100 AAPL, Audit=95 AAPL"
 
 **Response**:
+
 ```bash
 # 1. Immediate: Halt new orders
 # Set ORDERS_ENABLED=false
@@ -474,6 +498,7 @@ curl http://localhost:8000/api/account/positions
 **Symptom**: "Connection refused: 127.0.0.1:4002"
 
 **Response**:
+
 ```bash
 # 1. Check IBKR Gateway running
 # Is TWS/Gateway window open?
@@ -498,6 +523,7 @@ lsof -i :4002
 ### What Gets Logged
 
 ✅ **Every order action**:
+
 - Placement
 - Acceptance
 - Fill (partial or full)
@@ -505,11 +531,13 @@ lsof -i :4002
 - Rejection
 
 ✅ **Every query**:
+
 - Market data request
 - Account summary request
 - Position query
 
 ❌ **NOT logged** (for privacy):
+
 - API key
 - Account credentials
 - User personal info

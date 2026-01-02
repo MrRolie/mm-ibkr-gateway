@@ -43,6 +43,7 @@ We chose [Option X] because [rationale].
 System must prevent accidental live trading, especially in development. Paper trading is the safe default.
 
 **Options Considered**:
+
 1. **Single boolean flag**: `TRADING_MODE=true` or `TRADING_MODE=false`
    - Pros: Simple
    - Cons: Easy to typo, toggle; no recovery mechanism
@@ -57,6 +58,7 @@ System must prevent accidental live trading, especially in development. Paper tr
 
 **Decision**:
 Implemented dual-gate model:
+
 1. `TRADING_MODE` env var (paper or live)
 2. `ORDERS_ENABLED` env var (false by default)
 3. Override file must exist if `TRADING_MODE=live` AND `ORDERS_ENABLED=true`
@@ -64,6 +66,7 @@ Implemented dual-gate model:
 All three gates validated at startup, preventing accidental bypasses.
 
 **Consequences**:
+
 - Configuration is explicit and validated
 - Requires three separate steps to enable live trading
 - Deleting override file immediately disables live mode
@@ -83,6 +86,7 @@ All three gates validated at startup, preventing accidental bypasses.
 Need append-only audit trail for order history. Trade-off between simplicity and scalability.
 
 **Options Considered**:
+
 1. **SQLite** (chosen): File-based, zero setup
    - Pros: No server, no auth, embedded, simple, append-only enforced
    - Cons: Not clustered, limited concurrency
@@ -99,6 +103,7 @@ Need append-only audit trail for order history. Trade-off between simplicity and
 SQLite. Sufficient for single-account retail trading; simple to backup and move.
 
 **Consequences**:
+
 - Audit data stored in `data/audit.db`
 - Schema versioned for migrations
 - Backups via file copy: `cp data/audit.db data/audit_backup.db`
@@ -118,6 +123,7 @@ SQLite. Sufficient for single-account retail trading; simple to backup and move.
 ib_insync requires persistent asyncio event loop in the thread where it runs. FastAPI runs in default asyncio executor, which may not have event loop on every thread.
 
 **Options Considered**:
+
 1. **Dedicated thread** (chosen): Single-threaded executor with its own event loop
    - Pros: Guaranteed event loop, no "no event loop" errors, thread-safe
    - Cons: Requires `run_in_executor()` calls
@@ -140,6 +146,7 @@ await loop.run_in_executor(self.executor, blocking_call, *args)
 ```
 
 **Consequences**:
+
 - All IBKR operations are thread-safe (single thread)
 - Event loop guaranteed to exist in IBKR thread
 - No "no event loop" errors
@@ -159,6 +166,7 @@ await loop.run_in_executor(self.executor, blocking_call, *args)
 Need validation and serialization for HTTP requests/responses. Also need OpenAPI schema generation.
 
 **Options Considered**:
+
 1. **Pydantic v2** (chosen): Modern validation, FastAPI-native
    - Pros: Built into FastAPI, excellent IDE support, custom validators, JSON schema
    - Cons: Breaking changes from v1 (but v2 is stable)
@@ -175,6 +183,7 @@ Need validation and serialization for HTTP requests/responses. Also need OpenAPI
 Pydantic v2 for all request/response models and domain models.
 
 **Consequences**:
+
 - Validation happens automatically on instantiation
 - JSON schema auto-generated for OpenAPI docs
 - Type hints and IDE autocomplete
@@ -194,6 +203,7 @@ Pydantic v2 for all request/response models and domain models.
 Contract resolution (symbol → IBKR contract ID) is slow (~500ms). Caching reduces IBKR API calls.
 
 **Options Considered**:
+
 1. **In-memory cache** (chosen): Per-session cache
    - Pros: Fast, no persistence needed, simple
    - Cons: Cache stale after delisting, cleared on restart
@@ -221,6 +231,7 @@ def resolve_contract(spec: SymbolSpec) -> Contract:
 ```
 
 **Consequences**:
+
 - Eliminates ~500ms latency for second+ requests to same symbol
 - Stale cache if symbol delisted (rare; restart clears)
 - No persistence; fresh resolve on app restart
@@ -240,6 +251,7 @@ def resolve_contract(spec: SymbolSpec) -> Contract:
 MCP server needs to expose IBKR functions to Claude. Two architectures: thick wrapper or thin wrapper.
 
 **Options Considered**:
+
 1. **Thin HTTP wrapper** (chosen): MCP tools call REST API via HTTP
    - Pros: No code duplication, single source of truth (ibkr_core), testable in isolation
    - Cons: HTTP overhead, dependency on REST API
@@ -253,7 +265,7 @@ MCP server needs to expose IBKR functions to Claude. Two architectures: thick wr
    - Cons: Packaging complexity, requires installing locally
 
 **Decision**:
-Thin HTTP wrapper. MCP tools call REST API at http://localhost:8000.
+Thin HTTP wrapper. MCP tools call REST API at <http://localhost:8000>.
 
 ```python
 # In mcp_server/main.py
@@ -265,6 +277,7 @@ async def get_quote(symbol: str, security_type: str) -> str:
 ```
 
 **Consequences**:
+
 - Single source of truth: `ibkr_core`
 - REST API must be running for MCP to work
 - HTTP overhead negligible (~10ms per call)
@@ -285,6 +298,7 @@ async def get_quote(symbol: str, security_type: str) -> str:
 Need to prevent duplicate orders if user retries placement request. Also need idempotent audit log writes.
 
 **Options Considered**:
+
 1. **Deterministic hash** (chosen): Hash of (symbol, action, quantity, type) → orderId
    - Pros: Same input = same ID, idempotent, no sequence needed
    - Cons: Predictable IDs, same order twice appears as duplicate
@@ -308,6 +322,7 @@ def generate_order_id(spec: OrderSpec) -> int:
 ```
 
 **Consequences**:
+
 - Same order placed twice gets same orderId (IBKR rejects as duplicate)
 - Audit log unique constraint prevents duplicate writes
 - Enables safe retries without duplicating orders
@@ -326,6 +341,7 @@ def generate_order_id(spec: OrderSpec) -> int:
 System operates globally. Need unambiguous, standardized timestamps.
 
 **Options Considered**:
+
 1. **UTC + ISO 8601** (chosen): e.g., "2025-01-01T09:35:00Z"
    - Pros: Standard, unambiguous, no timezone confusion
    - Cons: Requires conversion to display in local tz
@@ -348,6 +364,7 @@ timestamp = datetime.now(timezone.utc).isoformat()  # "2025-01-01T09:35:00.12345
 ```
 
 **Consequences**:
+
 - All audit log and API timestamps are UTC
 - Local display requires conversion (handled in UI)
 - No ambiguity across time zones
@@ -367,6 +384,7 @@ timestamp = datetime.now(timezone.utc).isoformat()  # "2025-01-01T09:35:00.12345
 Financial applications cannot use IEEE 754 floats (0.1 + 0.2 != 0.3 problem). Need exact decimal arithmetic.
 
 **Options Considered**:
+
 1. **Python Decimal** (chosen): `from decimal import Decimal`
    - Pros: Exact arithmetic, 2 decimal place precision, standard
    - Cons: Slightly slower than float
@@ -393,6 +411,7 @@ price = price.quantize(Decimal("0.01"))  # Round to 2 decimals
 ```
 
 **Consequences**:
+
 - No hidden rounding errors in P&L calculations
 - All Pydantic money fields use Decimal type
 - JSON serialization uses `Decimal(str(...))` for parsing
@@ -453,6 +472,7 @@ price = price.quantize(Decimal("0.01"))  # Round to 2 decimals
 ## Summary
 
 Key invariants embedded in these decisions:
+
 - ✅ Safety first (dual-gate live trading)
 - ✅ Audit trail (append-only SQLite)
 - ✅ Idempotency (deterministic order IDs)

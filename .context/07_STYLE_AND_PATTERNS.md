@@ -509,6 +509,7 @@ def log_order_action(order_detail: OrderDetail):
 ### ❌ Never Do
 
 1. **Use `float` for money**
+
    ```python
    # BAD
    commission = 5.99  # Precision loss
@@ -518,6 +519,7 @@ def log_order_action(order_detail: OrderDetail):
    ```
 
 2. **Use `datetime.now()` without `timezone.utc`**
+
    ```python
    # BAD
    timestamp = datetime.now().isoformat()  # Local time!
@@ -527,6 +529,7 @@ def log_order_action(order_detail: OrderDetail):
    ```
 
 3. **Catch all exceptions**
+
    ```python
    # BAD
    try:
@@ -543,6 +546,7 @@ def log_order_action(order_detail: OrderDetail):
    ```
 
 4. **Trust environment variables without validation**
+
    ```python
    # BAD
    mode = os.environ.get("TRADING_MODE", "paper")
@@ -553,6 +557,7 @@ def log_order_action(order_detail: OrderDetail):
    ```
 
 5. **Modify audit logs**
+
    ```python
    # BAD
    cursor.execute("UPDATE audit_log SET status='CORRECTED' WHERE id=?")
@@ -563,6 +568,7 @@ def log_order_action(order_detail: OrderDetail):
    ```
 
 6. **Use mutable default arguments**
+
    ```python
    # BAD
    def add_position(positions: List[Position] = []):  # Mutable default!

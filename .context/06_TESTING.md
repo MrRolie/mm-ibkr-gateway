@@ -57,6 +57,7 @@ poetry run pytest tests/ --cov=ibkr_core --cov=api --cov-report=html
 **Scope**: Pydantic model validation
 
 **Tests**:
+
 - `TestSymbolSpec`: Symbol validation (security type, currency, etc.)
 - `TestQuote`: Quote model parsing and edge cases
 - `TestBar`: Historical bar validation
@@ -66,6 +67,7 @@ poetry run pytest tests/ --cov=ibkr_core --cov=api --cov-report=html
 - `TestOrderDetail`: Full order lifecycle model
 
 **Key Invariants Tested**:
+
 - Negative prices rejected
 - Order quantities >= 1
 - Security types in allowed set
@@ -78,6 +80,7 @@ poetry run pytest tests/ --cov=ibkr_core --cov=api --cov-report=html
 **Scope**: Configuration loading, validation, safety gates
 
 **Tests**:
+
 - `TestConfigDefaults`: Default values loaded correctly
 - `TestTradingMode`: `TRADING_MODE` validation (paper, live, typos)
 - `TestOrdersEnabled`: `ORDERS_ENABLED` boolean parsing
@@ -86,11 +89,13 @@ poetry run pytest tests/ --cov=ibkr_core --cov=api --cov-report=html
 - `TestInvalidConfiguration`: Port validation, invalid values
 
 **Key Safety Tests**:
+
 - ✅ `test_live_mode_with_orders_enabled_requires_override`: Override file must exist
 - ✅ `test_invalid_trading_mode`: Raises error on typo
 - ✅ `test_check_trading_enabled_raises_when_disabled`: Prevents order placement in paper mode
 
 **How to Run**:
+
 ```bash
 poetry run pytest tests/test_config.py -v
 ```
@@ -102,12 +107,14 @@ poetry run pytest tests/test_config.py -v
 **Scope**: Contract resolution and caching
 
 **Tests**:
+
 - `TestResolveContract`: Basic resolution (symbol → IBKR contract)
 - `TestContractCache`: Cache hit/miss behavior
 - `TestCacheExpiration`: Stale cache handling
 - `TestResolutionErrors`: Delisted/invalid symbols
 
 **Key Invariants Tested**:
+
 - Same symbol always returns same contract (in-memory cache)
 - Cache respects exchange/currency (cache key)
 - Deleted symbols result in appropriate errors
@@ -119,6 +126,7 @@ poetry run pytest tests/test_config.py -v
 **Scope**: Quote and historical bar fetching
 
 **Tests**:
+
 - `TestGetQuote`: Live quote retrieval
 - `TestGetBars`: Historical bar fetching (1 min, 1 day, etc.)
 - `TestMarketDataErrors`: Connection failures, invalid symbols
@@ -127,6 +135,7 @@ poetry run pytest tests/test_config.py -v
 **Marked as**: `@pytest.mark.integration` (requires IBKR)
 
 **How to Test (with IBKR running)**:
+
 ```bash
 poetry run pytest tests/test_market_data.py -v -m integration
 ```
@@ -138,16 +147,19 @@ poetry run pytest tests/test_market_data.py -v -m integration
 **Scope**: Account operations (summary, positions, P&L)
 
 **Tests**:
+
 - `test_account_summary.py`: `get_account_summary()` validation
 - `test_account_positions.py`: `get_positions()`, position calculations
 - `test_account_pnl.py`: `get_pnl()`, P&L aggregation, timeframe handling
 
 **Key Invariants Tested**:
+
 - `netLiquidation = cash + sum(position.marketValue)`
 - `unrealizedPnL = sum(position.unrealizedPnL)`
 - Positions keyed by symbol (no duplicates)
 
 **Example Test**:
+
 ```python
 def test_get_account_summary_cash_non_negative():
     """Cash balance must be >= 0."""
@@ -162,18 +174,21 @@ def test_get_account_summary_cash_non_negative():
 **Scope**: Order lifecycle (preview, place, cancel, status)
 
 **Files**:
+
 - `test_orders_validation.py`: Input validation
 - `test_orders_advanced.py`: Complex orders (bracket, trailing stop)
 - `test_orders_integration.py`: Full workflow (place → fill → cancel)
 - `test_orders_safety.py`: Safety gate enforcement
 
 **Key Safety Tests**:
+
 - ✅ `test_order_placement_raises_when_disabled`: `ORDERS_ENABLED=false` → simulated
 - ✅ `test_deterministic_order_id`: Same order always gets same ID
 - ✅ `test_negative_quantity_rejected`: Quantity validation
 - ✅ `test_limit_order_requires_limit_price`: Price validation
 
 **Example Test**:
+
 ```python
 def test_place_order_returns_simulated_in_paper_mode():
     """Orders are simulated when TRADING_MODE=paper."""
@@ -193,6 +208,7 @@ def test_place_order_returns_simulated_in_paper_mode():
 **Scope**: REST API endpoints
 
 **Files**:
+
 - `test_api_health.py`: Health check endpoint
 - `test_api_market_data.py`: `/api/market/quote`, `/api/market/historical`
 - `test_api_account.py`: Account endpoints
@@ -201,6 +217,7 @@ def test_place_order_returns_simulated_in_paper_mode():
 **Mocking Strategy**: Use `@mock.patch` to simulate IBKR responses without live connection.
 
 **Example Test**:
+
 ```python
 @mock.patch("ibkr_core.client.get_quote")
 def test_api_quote_endpoint_returns_200(mock_get_quote):
@@ -218,10 +235,12 @@ def test_api_quote_endpoint_returns_200(mock_get_quote):
 **Scope**: MCP tool server
 
 **Files**:
+
 - `test_mcp_tools.py`: Tool definitions and responses
 - `test_mcp_errors.py`: Error mapping (domain → MCP)
 
 **Key Tests**:
+
 - Tool parameters validated
 - Response format correct (JSON-RPC)
 - Errors mapped to MCP error codes
@@ -233,12 +252,14 @@ def test_api_quote_endpoint_returns_200(mock_get_quote):
 **Scope**: SQLite audit log
 
 **Tests**:
+
 - `TestAuditLogInsertion`: Rows inserted correctly
 - `TestAuditLogQuerying`: Query functions work
 - `TestIdempotency`: Duplicate inserts rejected by unique constraint
 - `TestSchema`: Table structure correct
 
 **Key Invariant Tested**:
+
 ```python
 def test_unique_constraint_prevents_duplicates():
     """Unique(correlation_id, event_type, timestamp) prevents duplicates."""
@@ -255,11 +276,13 @@ def test_unique_constraint_prevents_duplicates():
 **Scope**: Paper trading simulation
 
 **Files**:
+
 - `test_simulation_client.py`: Simulated order placement
 - `test_simulation_orders.py`: Order fill logic
 - `test_simulation_integration.py`: Full workflow in paper mode
 
 **Key Tests**:
+
 - Simulated orders return immediately
 - Fill price matches market quote (or limit if better)
 - Quantities tracked correctly
@@ -305,6 +328,7 @@ fi
 ### Requirement: Tests Must Be Deterministic
 
 All unit tests must produce identical results on repeated runs, regardless of:
+
 - System time
 - File system state
 - Previous test runs
@@ -312,6 +336,7 @@ All unit tests must produce identical results on repeated runs, regardless of:
 ### Implementation
 
 1. **Mock external calls**:
+
    ```python
    @mock.patch("ibkr_core.client.ibkr_get_quote")
    def test_quote(mock_quote):
@@ -319,6 +344,7 @@ All unit tests must produce identical results on repeated runs, regardless of:
    ```
 
 2. **Use fixed timestamps**:
+
    ```python
    @mock.patch("datetime.now")
    def test_order_timestamp(mock_now):
@@ -326,6 +352,7 @@ All unit tests must produce identical results on repeated runs, regardless of:
    ```
 
 3. **Seed random generators**:
+
    ```python
    def test_with_seed():
        random.seed(42)
@@ -333,6 +360,7 @@ All unit tests must produce identical results on repeated runs, regardless of:
    ```
 
 4. **Clean database state**:
+
    ```python
    @pytest.fixture
    def clean_db():
