@@ -276,6 +276,8 @@ function Test-CanRestart {
         if (($now - $firstRestart).TotalHours -ge 1) {
             $serviceState.count = 0
             $serviceState.firstRestartInWindow = $null
+            $state.$Service = $serviceState
+            Save-RestartState -State $state
         }
     }
     
