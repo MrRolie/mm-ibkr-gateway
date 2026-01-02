@@ -31,6 +31,7 @@ $url     = "http://${apiHost}:${apiPort}/account/summary"
 
 Write-Host "`n=== Testing mm-ibkr-gateway API ===" -ForegroundColor Cyan
 Write-Host "URL: $url" -ForegroundColor Gray
+Write-Host "API Key Set: $(if ($apiKey) { 'Yes' } else { 'No' })" -ForegroundColor Gray
 
 # Prepare headers
 $headers = @{}
@@ -57,6 +58,14 @@ try {
         exit 1
     }
 } catch {
-    Write-Host "ERROR: API test failed - $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR: API test failed" -ForegroundColor Red
+    Write-Host "Message: $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.Exception.Response) {
+        Write-Host "Status Code: $($_.Exception.Response.StatusCode)" -ForegroundColor Red
+        try {
+            $errorBody = $_.Exception.Response.Content.ReadAsString()
+            Write-Host "Response Body: $errorBody" -ForegroundColor Red
+        } catch { }
+    }
     exit 1
 }

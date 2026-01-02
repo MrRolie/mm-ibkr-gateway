@@ -36,29 +36,6 @@ Write-Log "Watchdog started" "INFO"
 # Check if within run window
 $inWindow = Test-RunWindow
 
-if (-not $inWindow) {
-    Write-Log "Outside run window - enforcing stopped state" "INFO"
-    
-    # Stop API if running
-    $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
-    if ($apiListening) {
-        Write-Log "Stopping API (outside run window)" "INFO"
-        & (Join-Path $ScriptDir "stop-api.ps1")
-    }
-    
-    # Stop Gateway if running
-    $gatewayRunning = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
-    if ($gatewayRunning) {
-        Write-Log "Stopping Gateway (outside run window)" "INFO"
-        & (Join-Path $ScriptDir "stop-gateway.ps1")
-    }
-    
-    Write-Log "Watchdog complete (services stopped - outside window)" "INFO"
-    exit 0
-}
-
-# We're in the run window - check services
-
 # Check storage path first
 $gdrivePath = $env:GDRIVE_BASE_PATH
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
@@ -67,10 +44,11 @@ if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
     exit 1
 }
 
-# Check IBKR Gateway
+# ==============================================================================
+# GATEWAY: Monitor 24/7, restart if unhealthy (IB handles daily soft restart)
+# ==============================================================================
 $gatewayRunning = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
 $gatewayListening = Get-NetTCPConnection -LocalPort $gatewayPort -State Listen -ErrorAction SilentlyContinue
-
 $gatewayHealthy = $gatewayRunning -and $gatewayListening
 
 if (-not $gatewayHealthy) {
@@ -85,8 +63,13 @@ if (-not $gatewayHealthy) {
             Start-Sleep -Seconds 3
         }
         
-        # Start gateway
-        & (Join-Path $ScriptDir "start-gateway.ps1") -Force
+        # Start gateway - respect GATEWAY_SHOW_WINDOW setting
+        $showWindow = $false
+        if ($env:GATEWAY_SHOW_WINDOW) { [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$showWindow) | Out-Null }
+        
+        $gwParams = @{ Force = $true }
+        if ($showWindow) { $gwParams["ShowWindow"] = $true }
+        & (Join-Path $ScriptDir "start-gateway.ps1") @gwParams
         Update-RestartCount -Service "gateway"
         
         # Wait for gateway to be ready
@@ -96,7 +79,25 @@ if (-not $gatewayHealthy) {
     }
 }
 
-# Check API
+# ==============================================================================
+# API: Enforce run window - stop outside, monitor/restart inside
+# ==============================================================================
+if (-not $inWindow) {
+    Write-Log "Outside run window - enforcing API stopped" "INFO"
+    
+    # Stop API if running
+    $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
+    if ($apiListening) {
+        Write-Log "Stopping API (outside run window)" "INFO"
+        & (Join-Path $ScriptDir "stop-api.ps1")
+    }
+    
+    Write-Log "Watchdog complete (Gateway: running 24/7, API: stopped outside window)" "INFO"
+    exit 0
+}
+
+# Inside run window - check API health
+
 $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
 $apiHealthy = $false
 
@@ -106,8 +107,24 @@ if ($apiListening) {
         $healthUrl = "http://${apiHost}:${apiPort}/health"
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 10 -ErrorAction Stop
         if ($response.status -eq "ok" -or $response.status -eq "degraded") {
-            $apiHealthy = $true
-            Write-Log "API health check passed: $($response.status)" "INFO"
+            # Health endpoint passed, but verify with a real API call
+            # Edge case: API can report "ok" but actual endpoints return 500
+            try {
+                $apiKey = $env:API_KEY
+                $headers = @{}
+                if ($apiKey) { $headers["X-API-Key"] = $apiKey }
+                
+                $testUrl = "http://${apiHost}:${apiPort}/account/summary"
+                $testResp = Invoke-RestMethod -Uri $testUrl -Headers $headers -TimeoutSec 5 -ErrorAction Stop
+                
+                # Real endpoint works
+                $apiHealthy = $true
+                Write-Log "API health check passed: endpoints working" "INFO"
+            } catch {
+                # Health check passed but actual endpoint failed - restart needed
+                Write-Log "API health endpoint ok but endpoints failing: $_" "WARN"
+                $apiHealthy = $false
+            }
         }
     } catch {
         Write-Log "API health check failed: $_" "WARN"
@@ -115,9 +132,9 @@ if ($apiListening) {
 }
 
 if (-not $apiHealthy) {
-    Write-Log "API is not healthy" "WARN"
+    Write-Log "API is not healthy (inside run window)" "WARN"
     
-    # Check if gateway is now healthy (after potential restart above)
+    # Check if gateway is healthy (after potential restart above)
     $gatewayListening = Get-NetTCPConnection -LocalPort $gatewayPort -State Listen -ErrorAction SilentlyContinue
     
     if (-not $gatewayListening) {

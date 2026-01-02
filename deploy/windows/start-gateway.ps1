@@ -131,7 +131,21 @@ if ($agentEnabled) {
         exit 1
     }
 
-    Copy-Item $jarSource $jarTarget -Force
+    # Copy jar file - skip if already exists and identical to source
+    try {
+        if ((Test-Path $jarTarget) -and (Get-Item $jarSource).Length -eq (Get-Item $jarTarget).Length) {
+            Write-Host "IBAutomater.jar already in place, skipping copy" -ForegroundColor Gray
+        } else {
+            Copy-Item $jarSource $jarTarget -Force -ErrorAction Stop
+            Write-Host "Updated IBAutomater.jar" -ForegroundColor Gray
+        }
+    } catch {
+        Write-Host "WARNING: Could not update IBAutomater.jar - using existing copy: $_" -ForegroundColor Yellow
+        if (-not (Test-Path $jarTarget)) {
+            Write-Host "ERROR: IBAutomater.jar missing from state directory and copy failed" -ForegroundColor Red
+            exit 1
+        }
+    }
 
     # Load credentials for the Java agent
     $username = $env:IBKR_USERNAME
@@ -165,7 +179,22 @@ if ($agentEnabled) {
         $exportLogs
         $isRestart
     ) -join "`n"
-    Set-Content -Path $javaAgentConfigPath -Value $agentConfigContent -Encoding UTF8
+    
+    # Write agent config - use fallback location if state directory is restricted
+    try {
+        Set-Content -Path $javaAgentConfigPath -Value $agentConfigContent -Encoding UTF8 -ErrorAction Stop
+    } catch {
+        Write-Host "WARNING: Could not write config to $javaAgentConfigPath - trying fallback location" -ForegroundColor Yellow
+        # Use temp location as fallback
+        $javaAgentConfigPath = "$env:TEMP\IBAutomater_$(Get-Random).json"
+        try {
+            Set-Content -Path $javaAgentConfigPath -Value $agentConfigContent -Encoding UTF8 -ErrorAction Stop
+            Write-Host "Using fallback config path: $javaAgentConfigPath" -ForegroundColor Yellow
+        } catch {
+            Write-Host "ERROR: Could not write agent config file: $_" -ForegroundColor Red
+            exit 1
+        }
+    }
 
     # Ensure ibgateway.vmoptions has the javaagent entry
     $vmOptionsPath = Join-Path $gatewayPath "ibgateway.vmoptions"
@@ -185,16 +214,27 @@ if ($agentEnabled) {
 }
 
 try {
-    # Launch gateway; default minimized, optionally visible for debugging
-    $windowStyle = if ($ShowWindow) { "Normal" } else { "Minimized" }
+    # Launch gateway
+    # GATEWAY_SHOW_WINDOW=true: Start minimized (clean screen, but visible in taskbar)
+    # GATEWAY_SHOW_WINDOW=false: Fully headless (no window at all)
+    $showFromEnv = $false
+    if ($env:GATEWAY_SHOW_WINDOW) { [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$showFromEnv) | Out-Null }
+    $effectiveShow = $ShowWindow -or $showFromEnv
+    # When showing window: start minimized (keeps screen clean, app visible in taskbar)
+    # When not showing: don't create window style (fully headless)
+    $windowStyle = if ($effectiveShow) { "Minimized" } else { $null }
     # Force jts config directory so gateway reads the user jts.ini we manage
     $jtsArg = "-J-DjtsConfigDir=$jtsConfigDir"
 
-    $process = Start-Process -FilePath $gatewayExe `
-        -WorkingDirectory $gatewayPath `
-        -WindowStyle $windowStyle `
-        -ArgumentList $jtsArg `
-        -PassThru
+    $startParams = @{
+        FilePath        = $gatewayExe
+        WorkingDirectory= $gatewayPath
+        ArgumentList    = $jtsArg
+        PassThru        = $true
+    }
+    if ($windowStyle) { $startParams.WindowStyle = $windowStyle }
+
+    $process = Start-Process @startParams
     Write-Host "IBKR Gateway started (PID: $($process.Id))" -ForegroundColor Green
     
     # Log startup

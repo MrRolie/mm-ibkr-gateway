@@ -73,6 +73,10 @@ $gatewayStartTaskEnabled = $false
 if ($env:START_GATEWAY_TASK_ENABLED) {
     [bool]::TryParse($env:START_GATEWAY_TASK_ENABLED, [ref]$gatewayStartTaskEnabled) | Out-Null
 }
+$gatewayShowWindow = $false
+if ($env:GATEWAY_SHOW_WINDOW) {
+    [bool]::TryParse($env:GATEWAY_SHOW_WINDOW, [ref]$gatewayShowWindow) | Out-Null
+}
 
 # Convert day abbreviations to Task Scheduler format (MON,TUE,WED,THU,FRI,SAT,SUN)
 $dayMap = @{
@@ -101,14 +105,13 @@ Write-Host "  Days: $scheduleDays"
 if ($gatewayStartTaskEnabled) {
     Write-Host "  Gateway Start: $startTime"
 } else {
-    Write-Host "  Gateway Start: DISABLED (START_GATEWAY_TASK_ENABLED=false)" -ForegroundColor Yellow
+    Write-Host "  Gateway: Runs continuously 24/7 (watchdog monitors, IB handles daily restart)" -ForegroundColor Cyan
 }
 Write-Host "  API Start: $apiStartTime"
 if ($stopTasksEnabled) {
-    Write-Host "  API Stop: $endTime"
-    Write-Host "  Gateway Stop: $gatewayStopTime"
+    Write-Host "  API Stop: $endTime (scheduled task)"
 } else {
-    Write-Host "  Stop tasks: DISABLED (set STOP_TASKS_ENABLED=true to create stop tasks)" -ForegroundColor Yellow
+    Write-Host "  API Stop: Enforced by watchdog outside run window" -ForegroundColor Cyan
 }
 Write-Host ""
 
@@ -135,7 +138,9 @@ function New-IBKRScheduledTask {
         [string]$Trigger,  # "DAILY", "ONSTART", "MINUTE"
         [string]$Time,     # For DAILY triggers
         [int]$Interval,    # For MINUTE triggers
-        [string]$Days      # For DAILY triggers
+        [string]$Days,     # For DAILY triggers
+        [switch]$Interactive,
+        [switch]$HideWindow
     )
     
     $fullTaskName = "$taskFolder\$TaskName"
@@ -155,7 +160,8 @@ function New-IBKRScheduledTask {
     }
     
     # Build schtasks command - note: /tr needs escaped quotes for XML
-    $taskCommand = "powershell.exe -ExecutionPolicy Bypass -NoProfile -File \`"$ScriptPath\`""
+    $windowStyleArg = if ($HideWindow) { "-WindowStyle Hidden " } else { "" }
+    $taskCommand = "powershell.exe ${windowStyleArg}-ExecutionPolicy Bypass -NoProfile -File \`"$ScriptPath\`""
     $schtasksArgs = @(
         "/create",
         "/tn", $fullTaskName,
@@ -163,6 +169,9 @@ function New-IBKRScheduledTask {
         "/ru", $TaskUser,
         "/rl", "HIGHEST"
     )
+    if ($Interactive) {
+        $schtasksArgs += "/it"
+    }
     
     switch ($Trigger) {
         "DAILY" {
@@ -205,9 +214,15 @@ if ($gatewayStartTaskEnabled) {
         -ScriptPath (Join-Path $ScriptDir "start-gateway.ps1") `
         -Trigger "DAILY" `
         -Time $startTime `
-        -Days $scheduleDays
+        -Days $scheduleDays `
+        -Interactive:$gatewayShowWindow
 } else {
-    Write-Host "Skipping Gateway start task (START_GATEWAY_TASK_ENABLED=false)" -ForegroundColor Yellow
+    Write-Host "Skipping Gateway start task (watchdog and boot-reconcile handle gateway)" -ForegroundColor Gray
+    # Clean up any existing gateway tasks from previous runs
+    try {
+        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-Gateway-START" /f 2>$null | Out-Null
+        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-Gateway-STOP" /f 2>$null | Out-Null
+    } catch { }
 }
 
 # 2. API START
@@ -219,7 +234,7 @@ New-IBKRScheduledTask `
     -Time $apiStartTime `
     -Days $scheduleDays
 
-# 3. API STOP
+# 3. API STOP (optional - watchdog handles window enforcement by default)
 if ($stopTasksEnabled) {
     New-IBKRScheduledTask `
         -TaskName "IBKR-API-STOP" `
@@ -229,29 +244,38 @@ if ($stopTasksEnabled) {
         -Time $endTime `
         -Days $scheduleDays
 } else {
-    Write-Host "Skipping API stop task (STOP_TASKS_ENABLED=false)" -ForegroundColor Yellow
+    Write-Host "Skipping API stop task (watchdog handles window enforcement)" -ForegroundColor Gray
+    # Clean up any existing stop task from previous runs
+    try {
+        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-API-STOP" /f 2>$null | Out-Null
+    } catch { }
 }
 
-# 4. Gateway STOP
-if ($stopTasksEnabled) {
-    New-IBKRScheduledTask `
-        -TaskName "IBKR-Gateway-STOP" `
-        -Description "Stop IBKR Gateway after market close" `
-        -ScriptPath (Join-Path $ScriptDir "stop-gateway.ps1") `
-        -Trigger "DAILY" `
-        -Time $gatewayStopTime `
-        -Days $scheduleDays
-} else {
-    Write-Host "Skipping Gateway stop task (STOP_TASKS_ENABLED=false)" -ForegroundColor Yellow
-}
+# Note: Gateway stop task removed - Gateway runs continuously (IB handles daily restart)
 
 # 5. Watchdog
-New-IBKRScheduledTask `
-    -TaskName "IBKR-Watchdog" `
-    -Description "Health check and auto-restart services" `
-    -ScriptPath (Join-Path $ScriptDir "watchdog.ps1") `
-    -Trigger "MINUTE" `
-    -Interval 2
+# Only run interactively if gateway UI needs to be visible
+# Non-interactive mode is more efficient but can't show windows on user desktop
+if ($gatewayShowWindow) {
+    Write-Host "Watchdog will run interactively (GATEWAY_SHOW_WINDOW=true)" -ForegroundColor Gray
+    New-IBKRScheduledTask `
+        -TaskName "IBKR-Watchdog" `
+        -Description "Health check and auto-restart services" `
+        -ScriptPath (Join-Path $ScriptDir "watchdog.ps1") `
+        -Trigger "MINUTE" `
+        -Interval 2 `
+        -Interactive `
+        -HideWindow
+} else {
+    Write-Host "Watchdog will run non-interactively (headless mode - better performance)" -ForegroundColor Gray
+    New-IBKRScheduledTask `
+        -TaskName "IBKR-Watchdog" `
+        -Description "Health check and auto-restart services" `
+        -ScriptPath (Join-Path $ScriptDir "watchdog.ps1") `
+        -Trigger "MINUTE" `
+        -Interval 2 `
+        -HideWindow
+}
 
 # 6. Boot Reconcile
 New-IBKRScheduledTask `

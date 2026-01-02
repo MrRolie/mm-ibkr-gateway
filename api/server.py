@@ -146,11 +146,12 @@ async def execute_ibkr_operation(
 
         # Run the blocking ibkr operation in thread pool with timeout
         loop = asyncio.get_running_loop()
-        ctx = contextvars.copy_context()
+        ctx_vars = contextvars.copy_context()
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 get_ibkr_executor(),
-                lambda: ctx.run(operation, client, *args, **kwargs),
+                # Preserve contextvars (e.g., correlation id) while keeping request ctx for logging
+                lambda: ctx_vars.run(operation, client, *args, **kwargs),
             ),
             timeout=timeout_s,
         )

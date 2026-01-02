@@ -193,12 +193,23 @@ function Get-RestartState {
         Get restart state for backoff tracking.
     #>
     $stateFile = "C:\ProgramData\mm-ibkr-gateway\restart_state.json"
+    $fallbackStateFile = Join-Path $env:TEMP "mm-ibkr-gateway_restart_state.json"
     
+    # Try primary location first, fall back to temp if not available
     if (Test-Path $stateFile) {
         try {
             return Get-Content $stateFile | ConvertFrom-Json
         } catch {
-            return @{ gateway = @{ count = 0; lastRestart = $null }; api = @{ count = 0; lastRestart = $null } }
+            # Fall through to fallback
+        }
+    }
+    
+    # Try fallback location
+    if (Test-Path $fallbackStateFile) {
+        try {
+            return Get-Content $fallbackStateFile | ConvertFrom-Json
+        } catch {
+            # Fall through to defaults
         }
     }
     
@@ -218,7 +229,17 @@ function Save-RestartState {
     }
     
     $stateFile = Join-Path $stateDir "restart_state.json"
-    $State | ConvertTo-Json -Depth 10 | Set-Content $stateFile
+    try {
+        $State | ConvertTo-Json -Depth 10 | Set-Content $stateFile -ErrorAction Stop
+    } catch {
+        # If state directory is restricted, use temp directory as fallback
+        $stateFile = Join-Path $env:TEMP "mm-ibkr-gateway_restart_state.json"
+        try {
+            $State | ConvertTo-Json -Depth 10 | Set-Content $stateFile -ErrorAction Stop
+        } catch {
+            # Silently fail - restart state is nice-to-have but not critical
+        }
+    }
 }
 
 function Test-CanRestart {
@@ -255,6 +276,8 @@ function Test-CanRestart {
         if (($now - $firstRestart).TotalHours -ge 1) {
             $serviceState.count = 0
             $serviceState.firstRestartInWindow = $null
+            $state.$Service = $serviceState
+            Save-RestartState -State $state
         }
     }
     
