@@ -52,8 +52,8 @@ class Config:
     log_level: str
 
     # Path settings
-    gdrive_base_path: Optional[str]
-    log_file_path: Optional[str]
+    data_storage_dir: Optional[str]
+    log_dir: Optional[str]
 
     # Arm file for orders (additional safety layer)
     arm_orders_file: Optional[str]
@@ -147,8 +147,8 @@ def load_config() -> Config:
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
     # Path settings
-    gdrive_base_path = os.getenv("GDRIVE_BASE_PATH")
-    log_file_path = os.getenv("LOG_FILE_PATH")
+    data_storage_dir = os.getenv("DATA_STORAGE_DIR")
+    log_dir = os.getenv("LOG_DIR")
     arm_orders_file = os.getenv("ARM_ORDERS_FILE")
 
     # Live Trading Override
@@ -165,8 +165,8 @@ def load_config() -> Config:
         api_port=api_port,
         api_bind_host=api_bind_host,
         log_level=log_level,
-        gdrive_base_path=gdrive_base_path,
-        log_file_path=log_file_path,
+        data_storage_dir=data_storage_dir,
+        log_dir=log_dir,
         arm_orders_file=arm_orders_file,
         live_trading_override_file=live_trading_override_file,
     )

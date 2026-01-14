@@ -15,6 +15,17 @@ Usage:
 """
 
 import asyncio
+# Ensure a default event loop exists at module import time.
+# Some third-party modules (e.g., eventkit) call asyncio.get_event_loop()
+# during import which raises RuntimeError if no loop has been set in the
+# main thread. Creating and setting a new event loop here prevents that
+# import-time failure.
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
+
 import contextvars
 import logging
 from typing import List, Optional

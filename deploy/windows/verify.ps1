@@ -87,7 +87,7 @@ if (Test-Path $envFile) {
 }
 
 # Required variables
-$requiredVars = @("API_BIND_HOST", "API_PORT", "PI_IP", "GDRIVE_BASE_PATH", "IBKR_GATEWAY_PATH")
+$requiredVars = @("API_BIND_HOST", "API_PORT", "DATA_STORAGE_DIR", "IBKR_GATEWAY_PATH")
 foreach ($var in $requiredVars) {
     $value = [Environment]::GetEnvironmentVariable($var)
     if ($value) {
@@ -112,21 +112,23 @@ Write-Host ""
 Write-Host "DIRECTORIES" -ForegroundColor White
 
 # Storage path
-if ($env:GDRIVE_BASE_PATH) {
-    if (Test-Path $env:GDRIVE_BASE_PATH) {
-        Write-Check "Storage path accessible" "PASS" $env:GDRIVE_BASE_PATH
+if ($env:DATA_STORAGE_DIR) {
+    if (Test-Path $env:DATA_STORAGE_DIR) {
+        Write-Check "Storage path accessible" "PASS" $env:DATA_STORAGE_DIR
     } else {
-        Write-Check "Storage path accessible" "FAIL" "Path not found: $env:GDRIVE_BASE_PATH"
+        Write-Check "Storage path accessible" "FAIL" "Path not found: $env:DATA_STORAGE_DIR"
     }
 }
 
 # Log directory
-if ($env:LOG_FILE_PATH) {
-    if (Test-Path $env:LOG_FILE_PATH) {
-        Write-Check "Log directory exists" "PASS" $env:LOG_FILE_PATH
+if ($env:LOG_DIR) {
+    if (Test-Path $env:LOG_DIR) {
+        Write-Check "Log directory exists" "PASS" $env:LOG_DIR
     } else {
         Write-Check "Log directory exists" "WARN" "Will be created on first run"
     }
+} else {
+    Write-Check "Log directory configured" "WARN" "LOG_DIR not set; default created on first run" 
 }
 
 # Secrets directory
@@ -146,6 +148,16 @@ if (Test-Path $stateDir) {
 }
 
 Write-Host ""
+
+# VENV CHECK
+if ($env:DATA_STORAGE_DIR) {
+    $venvPython = Join-Path $env:DATA_STORAGE_DIR "venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        Write-Check "Python venv present" "PASS" $venvPython
+    } else {
+        Write-Check "Python venv present" "WARN" "Run configure.ps1 to create venv"
+    }
+}
 
 # ============================================================================
 # IBKR Gateway Checks
@@ -190,7 +202,7 @@ $firewallRules = Get-NetFirewallRule -DisplayName "mm-ibkr-gateway*" -ErrorActio
 if ($firewallRules) {
     Write-Check "Firewall rules exist" "PASS" "$($firewallRules.Count) rules"
     
-    # Check for Pi IP rule
+    # Check for allowed IP allow rule
     $allowRules = $firewallRules | Where-Object { $_.Action -eq "Allow" }
     if ($allowRules) {
         Write-Check "Allow rules configured" "PASS"
@@ -231,7 +243,7 @@ if ($stopTasksEnabled) {
 $expectedTasks += "IBKR-Watchdog"
 $expectedTasks += "IBKR-Boot-Reconcile"
 
-$tasks = Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" -ErrorAction SilentlyContinue
+$tasks = Get-ScheduledTask -TaskPath "\mm-tasks\" -ErrorAction SilentlyContinue
 if ($tasks) {
     $taskNames = $tasks.TaskName
     

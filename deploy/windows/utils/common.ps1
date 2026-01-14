@@ -195,25 +195,52 @@ function Get-RestartState {
     $stateFile = "C:\ProgramData\mm-ibkr-gateway\restart_state.json"
     $fallbackStateFile = Join-Path $env:TEMP "mm-ibkr-gateway_restart_state.json"
     
+    $state = $null
+    
     # Try primary location first, fall back to temp if not available
     if (Test-Path $stateFile) {
         try {
-            return Get-Content $stateFile | ConvertFrom-Json
+            $state = Get-Content $stateFile | ConvertFrom-Json
         } catch {
             # Fall through to fallback
         }
     }
     
-    # Try fallback location
-    if (Test-Path $fallbackStateFile) {
+    # Try fallback location if primary failed
+    if (-not $state -and (Test-Path $fallbackStateFile)) {
         try {
-            return Get-Content $fallbackStateFile | ConvertFrom-Json
+            $state = Get-Content $fallbackStateFile | ConvertFrom-Json
         } catch {
             # Fall through to defaults
         }
     }
     
-    return @{ gateway = @{ count = 0; lastRestart = $null }; api = @{ count = 0; lastRestart = $null } }
+    # If no state loaded, create defaults
+    if (-not $state) {
+        $state = @{ 
+            gateway = @{ count = 0; lastRestart = $null; firstRestartInWindow = $null }
+            api = @{ count = 0; lastRestart = $null; firstRestartInWindow = $null } 
+        }
+    }
+    
+    # Normalize loaded state to ensure all required properties exist
+    foreach ($service in @("gateway", "api")) {
+        if (-not $state.$service) {
+            $state.$service = @{ count = 0; lastRestart = $null; firstRestartInWindow = $null }
+        } else {
+            if (-not (Get-Member -InputObject $state.$service -Name "count")) {
+                $state.$service | Add-Member -NotePropertyName "count" -NotePropertyValue 0 -Force
+            }
+            if (-not (Get-Member -InputObject $state.$service -Name "lastRestart")) {
+                $state.$service | Add-Member -NotePropertyName "lastRestart" -NotePropertyValue $null -Force
+            }
+            if (-not (Get-Member -InputObject $state.$service -Name "firstRestartInWindow")) {
+                $state.$service | Add-Member -NotePropertyName "firstRestartInWindow" -NotePropertyValue $null -Force
+            }
+        }
+    }
+    
+    return $state
 }
 
 function Save-RestartState {
@@ -271,9 +298,17 @@ function Test-CanRestart {
     $now = Get-Date
     
     # Reset counter if more than an hour since first restart in window
+    # Check both firstRestartInWindow and lastRestart (for backward compatibility)
+    $resetTime = $null
     if ($serviceState.firstRestartInWindow) {
-        $firstRestart = [DateTime]::Parse($serviceState.firstRestartInWindow)
-        if (($now - $firstRestart).TotalHours -ge 1) {
+        $resetTime = [DateTime]::Parse($serviceState.firstRestartInWindow)
+    } elseif ($serviceState.lastRestart -and $serviceState.count -gt 0) {
+        # Fallback: if firstRestartInWindow is missing but we have lastRestart, use that
+        $resetTime = [DateTime]::Parse($serviceState.lastRestart)
+    }
+    
+    if ($resetTime) {
+        if (($now - $resetTime).TotalHours -ge 1) {
             $serviceState.count = 0
             $serviceState.firstRestartInWindow = $null
             $state.$Service = $serviceState

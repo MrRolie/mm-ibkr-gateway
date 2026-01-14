@@ -15,6 +15,16 @@ Usage:
     python -m api.server
 """
 
+# Ensure an asyncio event loop exists at package import time to avoid
+# third-party modules (e.g., eventkit/ib_insync) calling
+# asyncio.get_event_loop() during import and raising RuntimeError.
+import asyncio
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    _loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_loop)
+
 from api.server import app
 
 __all__ = ["app"]

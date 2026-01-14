@@ -143,24 +143,16 @@ def get_log_file_path() -> Optional[Path]:
     """
     Get log file path from environment.
 
-    LOG_FILE_PATH can be either a directory or a file path.
-    If it's a directory (or has no suffix), defaults to ibkr-gateway.log.
+    LOG_DIR specifies the directory where log files are stored.
+    Returns the full path to ibkr-gateway.log in that directory.
     """
-    log_path = os.environ.get("LOG_FILE_PATH")
-    if not log_path:
+    log_dir = os.environ.get("LOG_DIR")
+    if not log_dir:
         return None
 
-    path = Path(log_path)
-    if path.exists():
-        if path.is_dir():
-            return path / "ibkr-gateway.log"
-        return path
-
-    # If the path has no suffix, treat it as a directory
-    if not path.suffix:
-        return path / "ibkr-gateway.log"
-
-    return path
+    path = Path(log_dir)
+    # Always treat LOG_DIR as a directory
+    return path / "ibkr-gateway.log"
 
 
 def configure_logging(

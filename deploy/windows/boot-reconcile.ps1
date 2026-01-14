@@ -29,7 +29,7 @@ Write-Log "Boot reconciliation started" "INFO"
 # Wait for network and storage path to be ready
 $maxWait = 120  # 2 minutes
 $waited = 0
-$gdrivePath = $env:GDRIVE_BASE_PATH
+$storagePath = $env:DATA_STORAGE_DIR
 
 while ($gdrivePath -and -not (Test-Path $gdrivePath) -and $waited -lt $maxWait) {
     Write-Log "Waiting for storage path ($waited s)..." "INFO"

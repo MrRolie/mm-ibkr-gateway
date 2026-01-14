@@ -93,7 +93,6 @@ $scheduleDays = ($runDays -split "," | ForEach-Object { $dayMap[$_.Trim()] }) -j
 # Calculate stop times (API stops first, then gateway)
 $endHour = [int]($endTime.Split(":")[0])
 $endMinute = [int]($endTime.Split(":")[1])
-$gatewayStopTime = "{0:D2}:{1:D2}" -f $endHour, ($endMinute + 1)
 
 # Calculate start times (gateway first, then API)
 $startHour = [int]($startTime.Split(":")[0])
@@ -115,11 +114,11 @@ if ($stopTasksEnabled) {
 }
 Write-Host ""
 
-# Task folder
-$taskFolder = "\mm-ibkr-gateway"
+# Task folder (shared)
+$taskFolder = "\mm-tasks"
 
 # Ensure task folder exists in Task Scheduler
-$taskFolderPath = "C:\Windows\System32\Tasks\mm-ibkr-gateway"
+$taskFolderPath = "C:\Windows\System32\Tasks\mm-tasks"
 if (-not (Test-Path $taskFolderPath)) {
     try {
         New-Item -ItemType Directory -Path $taskFolderPath -Force | Out-Null
@@ -220,8 +219,8 @@ if ($gatewayStartTaskEnabled) {
     Write-Host "Skipping Gateway start task (watchdog and boot-reconcile handle gateway)" -ForegroundColor Gray
     # Clean up any existing gateway tasks from previous runs
     try {
-        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-Gateway-START" /f 2>$null | Out-Null
-        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-Gateway-STOP" /f 2>$null | Out-Null
+        schtasks /delete /tn "\mm-tasks\IBKR-Gateway-START" /f 2>$null | Out-Null
+        schtasks /delete /tn "\mm-tasks\IBKR-Gateway-STOP" /f 2>$null | Out-Null
     } catch { }
 }
 
@@ -247,7 +246,7 @@ if ($stopTasksEnabled) {
     Write-Host "Skipping API stop task (watchdog handles window enforcement)" -ForegroundColor Gray
     # Clean up any existing stop task from previous runs
     try {
-        schtasks /delete /tn "\mm-ibkr-gateway\IBKR-API-STOP" /f 2>$null | Out-Null
+        schtasks /delete /tn "\mm-tasks\IBKR-API-STOP" /f 2>$null | Out-Null
     } catch { }
 }
 
@@ -287,14 +286,14 @@ New-IBKRScheduledTask `
 Write-Host "`n=== Task Setup Complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "To view tasks: Task Scheduler > $taskFolder" -ForegroundColor Gray
-Write-Host "To list tasks: schtasks /query /tn `"\mm-ibkr-gateway\*`"" -ForegroundColor Gray
+Write-Host "To list tasks: schtasks /query /tn `"\mm-tasks\*`"" -ForegroundColor Gray
 Write-Host ""
 
 # Show scheduled tasks
 Write-Host "Registered Tasks:" -ForegroundColor Cyan
 if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-    Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" | Get-ScheduledTaskInfo | Select-Object TaskName, NextRunTime, LastTaskResult | Format-Table -AutoSize
+    Get-ScheduledTask -TaskPath "\mm-tasks\" | Get-ScheduledTaskInfo | Select-Object TaskName, NextRunTime, LastTaskResult | Format-Table -AutoSize
 } else {
     # Fallback for older systems (might fail if wildcard not supported)
-    schtasks /query /fo TABLE /tn "\mm-ibkr-gateway\*" 2>$null | Select-Object -Skip 1
+    schtasks /query /fo TABLE /tn "\mm-tasks\*" 2>$null | Select-Object -Skip 1
 }

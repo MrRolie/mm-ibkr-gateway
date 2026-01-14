@@ -37,7 +37,7 @@ Write-Log "Watchdog started" "INFO"
 $inWindow = Test-RunWindow
 
 # Check storage path first
-$gdrivePath = $env:GDRIVE_BASE_PATH
+$storagePath = $env:DATA_STORAGE_DIR
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
     Write-Log "CRITICAL: Storage path not accessible at $gdrivePath" "ERROR"
     Write-Log "Will not start services without log/audit storage" "ERROR"

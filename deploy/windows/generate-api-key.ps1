@@ -82,9 +82,9 @@ if (Test-Path $gitignore) {
 }
 
 Write-Host "`n=== IMPORTANT ===" -ForegroundColor Yellow
-Write-Host "Copy this API key to your Raspberry Pi configuration:" -ForegroundColor Yellow
+Write-Host "Copy this API key to your client configuration (e.g., mm-trading on a remote machine or local client):" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  $apiKey" -ForegroundColor White
 Write-Host ""
-Write-Host "On the Pi, set: IBKR_API_KEY=`"$apiKey`"" -ForegroundColor Gray
+Write-Host "On a client machine, set: IBKR_API_KEY=\"$apiKey\"" -ForegroundColor Gray
 Write-Host ""

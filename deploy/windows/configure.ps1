@@ -111,33 +111,16 @@ $detectedIP = Get-LanIP
 Write-Host "Detected LAN IP: $detectedIP"
 
 $LanIP = Read-HostWithDefault -Prompt "Laptop LAN IP (API will bind to this)" -Default $detectedIP -Required
-$PiIP = Read-HostWithDefault -Prompt "Raspberry Pi IP (allowed to connect)" -Required
+$AllowedIPs = Read-HostWithDefault -Prompt "Allowed remote IPs/CIDR for inbound API (comma-separated)" -Default "127.0.0.1"
 $ApiPort = Read-HostWithDefault -Prompt "API Port" -Default "8000"
 Write-Host ""
 
 # Step 3: Storage Path
 Write-Host "Step 3: Storage Configuration" -ForegroundColor Yellow
-Write-Host "Choose where to store logs and audit data (local disk or synced folder)." -ForegroundColor Gray
-$storageType = Read-HostWithDefault -Prompt "Storage type (local/gdrive)" -Default "local"
-$storageType = $storageType.Trim().ToLower()
-$storageLabel = if ($storageType -like "g*") { "Google Drive" } else { "Local" }
-
-if ($storageType -like "g*") {
-    $StorageBasePath = Read-HostWithDefault -Prompt "Google Drive base path for logs/audit" -Required
-
-    # Validate drive for synced storage
-    if (-not (Test-Path (Split-Path $StorageBasePath -Qualifier))) {
-        Write-Host "WARNING: Drive $(Split-Path $StorageBasePath -Qualifier) not found. Is the sync drive mounted?" -ForegroundColor Yellow
-        $proceed = Read-HostWithDefault -Prompt "Continue anyway? (y/N)" -Default "N"
-        if ($proceed -ne "y" -and $proceed -ne "Y") {
-            Write-Host "Aborted. Please mount the drive and retry." -ForegroundColor Red
-            exit 1
-        }
-    }
-} else {
-    $defaultLocalPath = "C:\ProgramData\mm-ibkr-gateway\storage"
-    $StorageBasePath = Read-HostWithDefault -Prompt "Local base path for logs/audit" -Default $defaultLocalPath -Required
-}
+Write-Host "Default storage location: C:\ProgramData\mm-ibkr-gateway\storage" -ForegroundColor Gray
+Write-Host "This location is recommended for Windows services." -ForegroundColor Gray
+$defaultStoragePath = "C:\ProgramData\mm-ibkr-gateway\storage"
+$StorageBasePath = Read-HostWithDefault -Prompt "Storage base path (logs, audit db)" -Default $defaultStoragePath -Required
 Write-Host ""
 
 # Step 4: IBKR Gateway Configuration
@@ -207,6 +190,247 @@ if (-not (Test-Path $SecretsDir)) {
     Write-Host "  Created: $SecretsDir"
 }
 
+# Create Python virtual environment for service (venv)
+$venvPath = Join-Path $StorageBasePath "venv"
+if (Test-Path $venvPath) {
+    Write-Host "Python virtual environment already exists at: $venvPath" -ForegroundColor Gray
+    $recreateVenv = Read-HostWithDefault -Prompt "Recreate venv? (y/N)" -Default "N"
+    if ($recreateVenv -eq "y" -or $recreateVenv -eq "Y") {
+        Write-Host "Removing existing venv..." -NoNewline
+        Remove-Item -Recurse -Force $venvPath
+        Write-Host " OK" -ForegroundColor Green
+    }
+}
+
+if (-not (Test-Path $venvPath)) {
+    # Detect Python installations
+    function Find-PythonInstallations {
+        $pythonVersions = @()
+
+        # Try same approach as mm-trading: check well-known install locations first
+        $searchPaths = @(
+            "C:\\Python3*\\python.exe",
+            "C:\\Program Files\\Python3*\\python.exe",
+            "C:\\Program Files (x86)\\Python3*\\python.exe",
+            "$env:LOCALAPPDATA\\Programs\\Python\\Python3*\\python.exe"
+        )
+
+        foreach ($pattern in $searchPaths) {
+            Get-Item $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+                try {
+                    $versionOutput = & $_.FullName --version 2>&1
+                    if ($versionOutput -match 'Python (\d+\.\d+\.\d+)') {
+                        $version = $Matches[1]
+                        $pythonVersions += @{
+                            Path = $_.FullName
+                            Version = $version
+                            VersionObj = [version]$version
+                        }
+                    }
+                } catch {}
+            }
+        }
+
+        # Check PATH via Get-Command for python and python3
+        $candidates = @('python','python3')
+        foreach ($cmd in $candidates) {
+            try {
+                $ci = Get-Command $cmd -ErrorAction SilentlyContinue
+                if ($ci -and $ci.Source) {
+                    try {
+                        $versionOutput = & $ci.Source --version 2>&1
+                        if ($versionOutput -match 'Python (\d+\.\d+\.\d+)') {
+                            $version = $Matches[1]
+                            if (-not ($pythonVersions | Where-Object { $_.Path -eq $ci.Source })) {
+                                $pythonVersions += @{
+                                    Path = $ci.Source
+                                    Version = $version
+                                    VersionObj = [version]$version
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+
+        # Try where.exe as an additional PATH resolver
+        try {
+            $whereOut = & where.exe python 2>$null
+            if ($whereOut) {
+                foreach ($p in $whereOut) {
+                    $path = $p.Trim()
+                    if ($path -and -not ($pythonVersions | Where-Object { $_.Path -eq $path })) {
+                        try {
+                            $vout = & "$path" --version 2>&1
+                            if ($vout -match 'Python (\d+\.\d+\.\d+)') {
+                                $ver = $Matches[1]
+                                $pythonVersions += @{
+                                    Path = $path
+                                    Version = $ver
+                                    VersionObj = [version]$ver
+                                }
+                            }
+                        } catch {}
+                    }
+                }
+            }
+        } catch {}
+
+        # Lastly, check py launcher if available
+        try {
+            $pyCmd = Get-Command py -ErrorAction SilentlyContinue
+            if ($pyCmd) {
+                try {
+                    $pyverOut = & py -3 --version 2>&1
+                    if ($pyverOut -match 'Python (\d+\.\d+\.\d+)') {
+                        $ver = $Matches[1]
+                        $pyExe = & py -3 -c "import sys; print(sys.executable)" 2>$null
+                        $pyExe = $pyExe.Trim()
+                        if ($pyExe -and -not ($pythonVersions | Where-Object { $_.Path -eq $pyExe })) {
+                            $pythonVersions += @{
+                                Path = $pyExe
+                                Version = $ver
+                                VersionObj = [version]$ver
+                            }
+                        }
+                    }
+                } catch {}
+            }
+        } catch {}
+
+        # Deduplicate and sort
+        $pythonVersions = $pythonVersions | Sort-Object -Property VersionObj -Descending | Select-Object -Unique -Property Path, Version, VersionObj
+
+        # Diagnostic: print discovered entries
+        if ($pythonVersions.Count -gt 0) {
+            Write-Host "  Detected Python installs:" -ForegroundColor Gray
+            for ($i=0; $i -lt $pythonVersions.Count; $i++) {
+                $p = $pythonVersions[$i]
+                Write-Host "    [$($i+1)] $($p.Version) - $($p.Path)" -ForegroundColor Gray
+            }
+        }
+
+        return $pythonVersions
+    }
+
+    Write-Host "Setting up Python virtual environment at: $venvPath" -ForegroundColor Yellow
+    $pythonInstalls = Find-PythonInstallations
+
+    # Filter installs to valid paths
+    $pythonInstalls = $pythonInstalls | Where-Object { $_.Path -and (Test-Path $_.Path) }
+
+    # If none found after filtering, try Get-Command or where.exe as fallback
+    if (-not $pythonInstalls -or $pythonInstalls.Count -eq 0) {
+        Write-Host "No valid Python paths found in auto-detection; attempting PATH-based detection..." -ForegroundColor Yellow
+        $fallback = @()
+        try {
+            $ci = Get-Command python -ErrorAction SilentlyContinue
+            if ($ci -and $ci.Source -and (Test-Path $ci.Source)) {
+                $vout = & "$($ci.Source)" --version 2>&1
+                if ($vout -match 'Python (\d+\.\d+\.\d+)') { $ver = $Matches[1] } else { $ver = 'unknown' }
+                $fallback += @{ Path = $ci.Source; Version = $ver; VersionObj = [version]$ver }
+            }
+        } catch {}
+        try {
+            $whereOut = & where.exe python 2>$null
+            if ($whereOut) {
+                foreach ($p in $whereOut) {
+                    $path = $p.Trim()
+                    if ($path -and (Test-Path $path) -and -not ($fallback | Where-Object { $_.Path -eq $path })) {
+                        $vout = & "$path" --version 2>&1
+                        if ($vout -match 'Python (\d+\.\d+\.\d+)') { $ver = $Matches[1] } else { $ver = 'unknown' }
+                        $fallback += @{ Path = $path; Version = $ver; VersionObj = [version]$ver }
+                    }
+                }
+            }
+        } catch {}
+        if ($fallback.Count -gt 0) {
+            $pythonInstalls = $fallback | ForEach-Object { [PSCustomObject]$_ } | Sort-Object -Property VersionObj -Descending
+        }
+    }
+
+    # Diagnostic output: enumerate discovered installations
+    Write-Host "DEBUG: pythonInstalls count: $($pythonInstalls.Count)" -ForegroundColor Cyan
+    for ($di = 0; $di -lt $pythonInstalls.Count; $di++) {
+        $dp = $pythonInstalls[$di]
+        $type = if ($dp -is [string]) { $dp.GetType().FullName } else { $dp.PSObject.TypeNames[0] }
+        Write-Host "  DEBUG [$($di+1)] Type: $type Path: '$($dp.Path)' Version: '$($dp.Version)' VersionObj: '$($dp.VersionObj)'" -ForegroundColor Gray
+    }
+
+    if ($pythonInstalls.Count -eq 0) {
+        Write-Host "ERROR: No Python installations found. Please install Python 3.10+ and re-run configure." -ForegroundColor Red
+    } else {
+        $selectedPython = $null
+        if ($pythonInstalls.Count -eq 1) {
+            $selectedPython = $pythonInstalls[0]
+            Write-Host "Found Python $($selectedPython.Version) at $($selectedPython.Path)" -ForegroundColor Green
+        } else {
+            $count = ($pythonInstalls | Measure-Object).Count
+            Write-Host "Found multiple Python installations:" -ForegroundColor Yellow
+            for ($i = 0; $i -lt $count; $i++) {
+                $p = $pythonInstalls[$i]
+                $ver = if ($p.Version) { $p.Version } else { "(unknown)" }
+                $path = if ($p.Path) { $p.Path } else { "(unknown)" }
+                Write-Host "  [$($i+1)] Python $ver - $path"
+            }
+
+            $promptText = "Select Python version (1-$count) [1] or enter full path:"
+            $choice = Read-HostWithDefault -Prompt $promptText -Default "1"
+            if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+
+            if ($choice -match '^[0-9]+$') {
+                $choiceIdx = [int]$choice - 1
+                if ($choiceIdx -ge 0 -and $choiceIdx -lt $count) {
+                    $selectedPython = $pythonInstalls[$choiceIdx]
+                    Write-Host "Selected: Python $($selectedPython.Version) - $($selectedPython.Path)" -ForegroundColor Green
+                } else {
+                    Write-Host "Invalid selection index; defaulting to first detected Python" -ForegroundColor Yellow
+                    $selectedPython = $pythonInstalls[0]
+                }
+            } else {
+                # Treat input as a path
+                if (Test-Path $choice) {
+                    try {
+                        $vout = & "$choice" --version 2>&1
+                        if ($vout -match 'Python (\d+\.\d+\.\d+)') { $ver = $Matches[1] } else { $ver = "unknown" }
+                        $selectedPython = @{ Path = $choice; Version = $ver; VersionObj = [version]$ver }
+                        Write-Host "Selected Python at path: $choice (version: $ver)" -ForegroundColor Green
+                    } catch {
+                        Write-Host "Error: Could not execute provided python path; defaulting to first detected Python" -ForegroundColor Yellow
+                        $selectedPython = $pythonInstalls[0]
+                    }
+                } else {
+                    Write-Host "Invalid path specified; defaulting to first detected Python" -ForegroundColor Yellow
+                    $selectedPython = $pythonInstalls[0]
+                }
+            }
+        }
+
+        if ($selectedPython) {
+            $pythonExe = $selectedPython.Path
+            Write-Host "Creating venv using: $pythonExe" -ForegroundColor Gray
+            & $pythonExe -m venv $venvPath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
+            } else {
+                Write-Host "Virtual environment created: $venvPath" -ForegroundColor Green
+                $venvPython = Join-Path $venvPath "Scripts\\python.exe"
+                $venvPip = Join-Path $venvPath "Scripts\\pip.exe"
+                Write-Host "Installing packages into venv..." -ForegroundColor Yellow
+                & $venvPip install --upgrade pip --quiet
+                & $venvPip install -e "$RepoRoot" --quiet
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Package installed into venv" -ForegroundColor Green
+                } else {
+                    Write-Host "WARN: Failed to install package into venv" -ForegroundColor Yellow
+                }
+            }
+        }
+    }
+} else {
+    Write-Host "Virtual environment already present at: $venvPath" -ForegroundColor Gray
+}
 # ProgramData directory for state
 $StateDir = "C:\ProgramData\mm-ibkr-gateway"
 if (-not (Test-Path $StateDir)) {
@@ -243,14 +467,14 @@ LIVE_TRADING_OVERRIDE_FILE=
 # NETWORK SETTINGS
 # =============================================================================
 
-# API server bind address (LAN IP for Pi access)
+# API server bind address (LAN IP for remote clients or localhost)
 API_BIND_HOST=$LanIP
 
 # API server port
 API_PORT=$ApiPort
 
-# Pi IP address (for firewall rules)
-PI_IP=$PiIP
+# Allowed remote IPs/CIDR for inbound connections
+ALLOWED_IPS=$AllowedIPs
 
 # =============================================================================
 # IBKR CONNECTION SETTINGS
@@ -281,14 +505,14 @@ RUN_WINDOW_TIMEZONE=$RunWindowTimezone
 # PATH SETTINGS
 # =============================================================================
 
-# Storage base path (local or synced folder)
-GDRIVE_BASE_PATH=$StorageBasePath
+# Base storage directory (ProgramData recommended for services)
+DATA_STORAGE_DIR=$StorageBasePath
 
 # Audit database (SQLite)
 AUDIT_DB_PATH=$AuditDbPath
 
-# Log file directory
-LOG_FILE_PATH=$LogDir
+# Log directory
+LOG_DIR=$LogDir
 
 # IBKR Gateway installation path
 IBKR_GATEWAY_PATH=$GatewayPath
@@ -318,8 +542,31 @@ if (Test-Path $EnvFile) {
     Write-Host "  Backed up existing .env to: $backupPath" -ForegroundColor Gray
 }
 
-Set-Content -Path $EnvFile -Value $envContent -Encoding UTF8
-Write-Host "  Created: $EnvFile" -ForegroundColor Green
+# Atomic write with retries to handle file locks
+$tempEnv = "$EnvFile.tmp.$([guid]::NewGuid().ToString())"
+try {
+    Set-Content -Path $tempEnv -Value $envContent -Encoding UTF8 -ErrorAction Stop
+    $maxAttempts = 5
+    $moved = $false
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Move-Item -Path $tempEnv -Destination $EnvFile -Force -ErrorAction Stop
+            Write-Host "  Created: $EnvFile" -ForegroundColor Green
+            $moved = $true
+            break
+        } catch {
+            Write-Host "  WARNING: Could not move .env to destination (attempt $attempt/$maxAttempts): $_" -ForegroundColor Yellow
+            if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds (2 * $attempt) }
+        }
+    }
+    if (-not $moved) {
+        Write-Host "  ERROR: Failed to write .env after $maxAttempts attempts. Close editors or other programs that may hold the file and re-run configure.ps1" -ForegroundColor Red
+        Remove-Item -Path $tempEnv -ErrorAction SilentlyContinue
+    }
+} catch {
+    Write-Host "  ERROR: Failed to write temporary .env file: $_" -ForegroundColor Red
+    Remove-Item -Path $tempEnv -ErrorAction SilentlyContinue
+}
 
 # Store IBKR credentials for autologin setup
 if ($IBKRUsername -and $IBKRPassword) {
@@ -342,8 +589,8 @@ Write-Host "========================================`n" -ForegroundColor Green
 Write-Host "Summary:" -ForegroundColor Cyan
 Write-Host "  Repository:      $RepoRoot"
 Write-Host "  API Endpoint:    http://${LanIP}:${ApiPort}"
-Write-Host "  Pi IP:           $PiIP"
-Write-Host "  Storage Path:    $StorageBasePath ($storageLabel)"
+Write-Host "  Allowed IPs:     $AllowedIPs"
+Write-Host "  Storage Path:    $StorageBasePath"
 Write-Host "  Trading Mode:    $TradingMode"
 Write-Host "  Orders Enabled:  $OrdersEnabled"
 Write-Host "  Run Window:      $RunWindowDays $RunWindowStart - $RunWindowEnd ($RunWindowTimezone)"

@@ -79,7 +79,7 @@ if (-not (Test-Path $gatewayExe)) {
 Write-Host "Starting: $gatewayExe" -ForegroundColor Gray
 
 # Check storage path is accessible (fail-safe)
-$gdrivePath = $env:GDRIVE_BASE_PATH
+$storagePath = $env:DATA_STORAGE_DIR
 if ($gdrivePath -and -not (Test-Path $gdrivePath)) {
     Write-Host "ERROR: Storage path not accessible: $gdrivePath" -ForegroundColor Red
     Write-Host "Is the storage path mounted/available? Will not start gateway without log/audit storage." -ForegroundColor Yellow

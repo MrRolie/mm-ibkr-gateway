@@ -9,7 +9,7 @@ This guide deploys the **mm-ibkr-gateway** as a production execution node on a W
 - **Watchdog automation** (health checks, auto-restart)
 - **Time-windowed operation** (weekdays 4:00 AM - 8:00 PM by default)
 
-A Raspberry Pi on the same LAN connects to this node to execute trades.
+A client on the same LAN connects to this node to execute trades.
 
 ---
 
@@ -62,9 +62,9 @@ A Raspberry Pi on the same LAN connects to this node to execute trades.
 
 ### Network Requirements
 
-- Laptop and Pi on same LAN subnet
+- Laptop and client on same LAN subnet
 - Laptop has static IP (e.g., 192.168.1.100)
-- Pi IP known (e.g., 192.168.1.50)
+- Client IP known (e.g., 192.168.1.50)
 
 ---
 
@@ -77,7 +77,7 @@ This deployment preserves ALL existing safety mechanisms:
 | `TRADING_MODE` | `paper` | Paper trading only (port 4002) |
 | `ORDERS_ENABLED` | `false` | Orders blocked by default |
 | Override File | Not present | Required for live+orders |
-| Firewall | Pi IP only | LAN-restricted access |
+| Firewall | Allowed IPs only | LAN-restricted access |
 | API Key | Required | Authentication enforced |
 | Time Window | Weekdays 4-8 | Services only run during market hours |
 
@@ -104,9 +104,9 @@ cd "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows"
 This interactive script will:
 
 - Detect your LAN IP
-- Ask for Pi IP, storage path (local or synced), IBKR credentials
-- Generate `.env` file with all settings
-- Create directories in the chosen storage path
+- Ask for allowed client IPs, storage path (local or synced), and IBKR credentials
+- Create a Python virtual environment at the chosen storage path and install required packages
+- Generate `.env` file with all settings and create required directories in the chosen storage path
 
 ### 2. Set Up IBKR Gateway Auto-Login
 
@@ -122,7 +122,7 @@ This configures IBKR Gateway's `jts.ini` for automatic paper login.
 .\setup-firewall.ps1
 ```
 
-Restricts API port access to Pi IP and localhost only.
+Restricts API port access to configured allowed IPs and localhost only.
 
 ### 4. Create Scheduled Tasks
 
@@ -139,7 +139,7 @@ Creates all Task Scheduler jobs for automated operation.
 ```
 
 Generates a secure API key and saves to `secrets/api_key.txt`.
-**Copy this key to your Pi's configuration.**
+**Copy this key to your client configuration.**
 
 ### 6. Verify Deployment
 
@@ -172,7 +172,7 @@ Located in repo root `.env` file:
 | `API_BIND_HOST` | (auto-detect) | IP to bind API server |
 | `API_PORT` | `8000` | API server port |
 | `PAPER_GATEWAY_PORT` | `4002` | IBKR Gateway paper port |
-| `PI_IP` | (configured) | Allowed client IP |
+| `ALLOWED_IPS` | `127.0.0.1` | Comma-separated list of allowed remote IPs/CIDR for inbound API connections |
 
 #### Time Window Settings
 
@@ -187,9 +187,9 @@ Located in repo root `.env` file:
 
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
-| `GDRIVE_BASE_PATH` | (configured) | Storage base path (local or synced folder) |
+| `DATA_STORAGE_DIR` | (configured) | Base storage directory (ProgramData recommended) |
 | `AUDIT_DB_PATH` | `{BASE}/audit.db` | Audit database location |
-| `LOG_FILE_PATH` | `{BASE}/logs/` | Log file directory |
+| `LOG_DIR` | `{BASE}/logs/` | Log directory |
 | `IBKR_GATEWAY_PATH` | (configured) | IBKR Gateway install path |
 
 ---
@@ -213,7 +213,7 @@ Located in repo root `.env` file:
 | -------- | --------- |
 | `start-gateway.ps1` | Start IBKR Gateway |
 | `stop-gateway.ps1` | Stop IBKR Gateway |
-| `start-api.ps1` | Start FastAPI server |
+| `start-api.ps1` | Start FastAPI server (launched via `python -m api.uvicorn_runner` which ensures stdout/stderr handling and runs `api.boot:app` to create an event loop before imports; writes PID to `LOG_DIR/api.pid` or falls back to `%TEMP%/api.pid` if ProgramData is not writable) |
 | `stop-api.ps1` | Stop FastAPI server |
 | `watchdog.ps1` | Health monitor (runs via Task Scheduler) |
 | `healthcheck.ps1` | Manual health check |
@@ -335,7 +335,7 @@ If the automated script fails or you prefer manual setup:
    ```powershell
    # Test start tasks
    schtasks /run /tn "\mm-ibkr-gateway\IBKR-Gateway-START"
-   schtasks /run /tn "\mm-ibkr-gateway\IBKR-API-START"
+   schtasks /run /tn "\mm-tasks\IBKR-API-START"
    
    # Check status
    .\status.ps1
@@ -394,8 +394,17 @@ If `setup-tasks.ps1` fails with "system cannot find the file specified":
 ### View Recent Logs
 
 ```powershell
-Get-Content "$env:GDRIVE_BASE_PATH\logs\api.log" -Tail 100
+Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Tail 100
 ```
+
+### API Startup & PID file
+
+- `start-api.ps1` launches the server using `python -m api.uvicorn_runner`.
+  - `api.uvicorn_runner` ensures `sys.stdout`/`sys.stderr` are present (prevents uvicorn/formatter errors when stdio is redirected), and runs `api.boot:app` so an asyncio event loop exists before importing third-party libs that may call `asyncio.get_event_loop()` at import time.
+- PID file behavior:
+  - Primary: writes PID to `LOG_DIR\api.pid` (typically under `%DATA_STORAGE_DIR%/logs`).
+  - Fallback: if the ProgramData storage/log directory is not writable, the script writes the PID to `%TEMP%\api.pid` and logs a warning indicating the fallback location.
+- Recommendation: ensure the service account or the Task Scheduler account has write permissions to `%DATA_STORAGE_DIR%` and its `logs` subdirectory so PID files and logs are persisted in ProgramData.
 
 ### Manual Service Control
 
@@ -453,7 +462,7 @@ The API key is stored in `secrets/api_key.txt` outside the repo.
 
 **Recommendations:**
 
-1. Copy to Pi securely (not via email/chat)
+1. Copy to a client securely (not via email/chat). For local testing you can use mm-trading on the same machine.
 2. Rotate periodically using `generate-api-key.ps1`
 3. File is excluded from git via `.gitignore`
 
@@ -461,7 +470,7 @@ The API key is stored in `secrets/api_key.txt` outside the repo.
 
 The firewall rule restricts API access to:
 
-- Pi IP (configured during setup)
+- Allowed IPs (configured during setup)
 - Localhost (127.0.0.1)
 
 **To allow additional IPs:**
@@ -484,18 +493,24 @@ Run IBKR Gateway manually once to verify auto-login works:
 & "$env:IBKR_GATEWAY_PATH\ibgateway.exe"
 ```
 
-### 2. Copy API Key to Pi
+### 2. Copy API Key to client
 
-The API key is in `secrets/api_key.txt`. Copy it to your Pi's environment:
+The API key is in `secrets/api_key.txt`. Copy it to any client that will call the API (for example, mm-trading on the same machine):
 
 ```bash
-# On Pi
+# On client (or local shell)
 export IBKR_API_KEY="<paste-key-here>"
 ```
 
-### 3. Verify Pi Connectivity
+### 3. Verify client connectivity
 
-From the Pi, test connectivity:
+Local test (same machine):
+
+```bash
+curl -H "X-API-Key: $IBKR_API_KEY" http://127.0.0.1:8000/health
+```
+
+Remote client test (replace `<laptop-ip>` with this machine IP):
 
 ```bash
 curl -H "X-API-Key: $IBKR_API_KEY" http://<laptop-ip>:8000/health
@@ -510,7 +525,7 @@ When ready to enable order placement:
 $env:ORDERS_ENABLED = "true"
 
 # Create arm file
-New-Item -Path "$env:GDRIVE_BASE_PATH\arm_orders_confirmed.txt" -ItemType File
+New-Item -Path "$env:DATA_STORAGE_DIR\arm_orders_confirmed.txt" -ItemType File
 ```
 
 ### 5. Monitor First Full Day
@@ -519,7 +534,7 @@ Watch the first full trading day:
 
 ```powershell
 # In one terminal
-Get-Content "$env:GDRIVE_BASE_PATH\logs\api.log" -Wait
+Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Wait
 
 # In another terminal
 .\status.ps1

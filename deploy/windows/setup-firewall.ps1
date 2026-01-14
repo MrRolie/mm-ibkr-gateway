@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Creates inbound rules to:
-    - Allow API port access from Pi IP
+    - Allow API port access from configured clients (ALLOWED_IPS)
     - Allow API port access from localhost
     - Block API port from all other sources
 
@@ -47,32 +47,35 @@ Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Get configuration
 $apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
-$piIP = $env:PI_IP
 $bindHost = $env:API_BIND_HOST
-
-if (-not $piIP) {
-    Write-Host "ERROR: PI_IP not configured. Run configure.ps1 first." -ForegroundColor Red
-    exit 1
+$allowedEnv = $env:ALLOWED_IPS
+if (-not $allowedEnv) {
+    $allowedEnv = "127.0.0.1"
 }
 
 Write-Host "Configuration:" -ForegroundColor Gray
 Write-Host "  API Port: $apiPort"
-Write-Host "  Pi IP: $piIP"
 Write-Host "  Bind Host: $bindHost"
+Write-Host "  ALLOWED_IPS: $allowedEnv"
 if ($AdditionalIPs) {
     Write-Host "  Additional IPs: $AdditionalIPs"
 }
 Write-Host ""
 
 # Build list of allowed IPs
-$allowedIPs = @("127.0.0.1", $piIP)
+$allowedIPs = @()
+# Add default loopback
+$allowedIPs += "127.0.0.1"
+# Add configured allowed IPs
+$allowedIPs += $allowedEnv -split ","
+# Add bindHost if it's specific
 if ($bindHost -and $bindHost -ne "0.0.0.0") {
     $allowedIPs += $bindHost
 }
 if ($AdditionalIPs) {
     $allowedIPs += $AdditionalIPs -split ","
 }
-$allowedIPs = $allowedIPs | Select-Object -Unique
+$allowedIPs = $allowedIPs | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | Select-Object -Unique
 
 Write-Host "Allowed IPs: $($allowedIPs -join ', ')" -ForegroundColor Gray
 Write-Host ""
@@ -148,8 +151,8 @@ Get-NetFirewallRule -DisplayName "mm-ibkr-gateway*" |
     Format-Table DisplayName, Enabled, Direction, Action -AutoSize
 
 Write-Host ""
-Write-Host "To test from Pi:" -ForegroundColor Gray
-Write-Host "  curl http://${bindHost}:${apiPort}/health" -ForegroundColor White
+Write-Host "To test locally:" -ForegroundColor Gray
+Write-Host "  curl http://127.0.0.1:${apiPort}/health" -ForegroundColor White
 Write-Host ""
 Write-Host "To verify rules:" -ForegroundColor Gray
 Write-Host "  Get-NetFirewallRule -DisplayName 'mm-ibkr-gateway*' | Format-List" -ForegroundColor White

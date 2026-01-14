@@ -95,7 +95,7 @@ Write-Host "  API Port:        $apiPort " -NoNewline
 Write-Host $(if ($apiListening) { "[LISTENING]" } else { "[NOT LISTENING]" }) -ForegroundColor $apiPortColor
 
 Write-Host "  API Bind Host:   $apiHost"
-Write-Host "  Pi IP (allowed): $env:PI_IP"
+Write-Host "  Allowed IPs:     $env:ALLOWED_IPS"
 Write-Host ""
 
 # Health check
@@ -121,11 +121,11 @@ if ($apiListening) {
 Write-Host "CONFIGURATION" -ForegroundColor White
 Write-Host "  Trading Mode:    $env:TRADING_MODE"
 Write-Host "  Orders Enabled:  $env:ORDERS_ENABLED"
-Write-Host "  Storage Path:    $env:GDRIVE_BASE_PATH"
+Write-Host "  Storage Path:    $env:DATA_STORAGE_DIR"
 
 # Check storage path accessibility
-if ($env:GDRIVE_BASE_PATH) {
-    if (Test-Path $env:GDRIVE_BASE_PATH) {
+if ($env:DATA_STORAGE_DIR) {
+    if (Test-Path $env:DATA_STORAGE_DIR) {
         Write-Host "  Drive Status:    " -NoNewline
         Write-Host "Accessible" -ForegroundColor Green
     } else {
@@ -149,7 +149,7 @@ Write-Host ""
 # Scheduled tasks
 Write-Host "SCHEDULED TASKS" -ForegroundColor White
 if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-    $tasks = Get-ScheduledTask -TaskPath "\mm-ibkr-gateway\" -ErrorAction SilentlyContinue
+    $tasks = Get-ScheduledTask -TaskPath "\mm-tasks\" -ErrorAction SilentlyContinue
     if (-not $tasks) {
         # Fallback: query all tasks and filter (handles wildcard limitations)
         $tasks = schtasks /query /fo CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\\mm-ibkr-gateway\\*" }
