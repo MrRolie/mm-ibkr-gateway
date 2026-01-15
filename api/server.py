@@ -30,8 +30,12 @@ import contextvars
 import logging
 from typing import List, Optional
 
+from pathlib import Path as FilePath
+
 from fastapi import Depends, FastAPI, Path
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from api.auth import verify_api_key
 from api.dependencies import (
@@ -52,7 +56,8 @@ from api.errors import (
     general_exception_handler,
     map_ibkr_exception,
 )
-from api.middleware import CorrelationIdMiddleware
+from api.admin import router as admin_router
+from api.middleware import CorrelationIdMiddleware, TimeWindowMiddleware, TradingDisabledMiddleware
 from api.models import (
     AccountPnl,
     AccountSummary,
@@ -114,9 +119,40 @@ app.add_middleware(
 # so this will run BEFORE CORS middleware
 app.add_middleware(CorrelationIdMiddleware)
 
+# Add time-window enforcement middleware
+# This ensures API is only accessible during configured RUN_WINDOW_*
+app.add_middleware(TimeWindowMiddleware)
+
+# Add trading disabled middleware
+# This checks mm-control guard file/toggle store for order endpoints
+app.add_middleware(TradingDisabledMiddleware)
+
 # Register exception handlers
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(Exception, general_exception_handler)
+
+# Include admin router for trading control operations
+app.include_router(admin_router)
+
+# =============================================================================
+# Operator UI Static Files
+# =============================================================================
+
+# Path to static files directory
+_static_dir = FilePath(__file__).parent / "static"
+
+# Mount static files for UI assets (CSS, JS)
+if _static_dir.exists():
+    app.mount("/ui/static", StaticFiles(directory=str(_static_dir)), name="ui-static")
+
+
+@app.get("/ui", tags=["UI"], summary="Operator Dashboard", include_in_schema=False)
+async def serve_operator_ui():
+    """Serve the operator dashboard UI."""
+    index_path = _static_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path), media_type="text/html")
+    return {"error": "UI not found", "message": "Operator UI files not installed"}
 
 
 # =============================================================================
@@ -240,6 +276,44 @@ async def health_check(
         trading_mode=config.trading_mode,
         orders_enabled=config.orders_enabled,
     )
+
+
+@app.get(
+    "/control/status",
+    tags=["Control"],
+    summary="Trading control status",
+    description="Get current trading control status from mm-control (guard file, toggles, TTL)",
+)
+async def get_control_status():
+    """
+    Get trading control status from mm-control.
+
+    Returns toggle status including:
+        - trading_enabled: Whether trading is currently enabled
+        - disabled_at: Timestamp when trading was disabled (if applicable)
+        - disabled_by: User who disabled trading
+        - disabled_reason: Reason for disabling
+        - expires_at: TTL expiry timestamp (if applicable)
+        - time_until_expiry_seconds: Seconds until auto-revert (if applicable)
+
+    Returns:
+        dict: Trading control status from mm-control
+    """
+    try:
+        from mm_control import get_toggle_status
+
+        status = get_toggle_status()
+        return status
+    except ImportError:
+        logger.warning("mm-control not installed - control status unavailable")
+        return {
+            "error": "mm-control not installed",
+            "trading_enabled": None,
+            "disabled_at": None,
+            "disabled_by": None,
+            "disabled_reason": None,
+            "expires_at": None,
+        }
 
 
 # =============================================================================

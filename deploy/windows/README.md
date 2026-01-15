@@ -4,10 +4,11 @@
 
 This guide deploys the **mm-ibkr-gateway** as a production execution node on a Windows x86_64 laptop. The node runs:
 
-- **IBKR Gateway** (paper trading, auto-login)
-- **FastAPI REST API** (LAN-bound, API key protected)
-- **Watchdog automation** (health checks, auto-restart)
-- **Time-windowed operation** (weekdays 4:00 AM - 8:00 PM by default)
+- **IBKR Gateway** (paper trading, auto-login, Windows service)
+- **FastAPI REST API** (LAN-bound, API key protected, Windows service)
+- **NSSM service management** (auto-start on boot, auto-restart on failure)
+- **Time-windowed operation** (API enforces window internally, returns 503 outside hours)
+- **mm-control integration** (centralized trading control via guard file + toggle store)
 
 A client on the same LAN connects to this node to execute trades.
 
@@ -22,23 +23,21 @@ A client on the same LAN connects to this node to execute trades.
 │  ┌─────────────────┐     ┌─────────────────┐                    │
 │  │  IBKR Gateway   │◄────│  FastAPI REST   │◄──── LAN (Pi)      │
 │  │  (port 4002)    │     │  (port 8000)    │                    │
+│  │  NSSM Service   │     │  NSSM Service   │                    │
 │  └─────────────────┘     └─────────────────┘                    │
 │           │                       │                             │
 │           ▼                       ▼                             │
 │  ┌─────────────────────────────────────────┐                    │
-│  │         Storage Sync Folder (optional)  │                    │
+│  │         Storage (ProgramData)           │                    │
 │  │  - audit.db (SQLite)                    │                    │
 │  │  - logs/                                │                    │
 │  └─────────────────────────────────────────┘                    │
 │                                                                 │
 │  ┌─────────────────────────────────────────┐                    │
-│  │         Task Scheduler                  │                    │
-│  │  - Start Gateway (04:00 weekdays)       │                    │
-│  │  - Start API (04:02 weekdays)           │                    │
-│  │  - Stop API (20:00 weekdays)            │                    │
-│  │  - Stop Gateway (20:01 weekdays)        │                    │
-│  │  - Watchdog (every 2 min during window) │                    │
-│  │  - Boot Reconcile (on startup)          │                    │
+│  │         mm-control                      │                    │
+│  │  - TRADING_DISABLED (guard file)        │                    │
+│  │  - toggles.json (with TTL)              │                    │
+│  │  - control.log (audit)                  │                    │
 │  └─────────────────────────────────────────┘                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -57,7 +56,7 @@ A client on the same LAN connects to this node to execute trades.
 ### Required Access
 
 - IBKR paper trading account credentials
-- Administrator access (for Task Scheduler and Firewall)
+- Administrator access (for NSSM service installation and Firewall)
 - Static LAN IP configured on the laptop
 
 ### Network Requirements
@@ -94,7 +93,7 @@ This deployment preserves ALL existing safety mechanisms:
 
 ### 1. Run Configuration Script
 
-Open PowerShell **as Administrator** and run:
+Open PowerShell and run:
 
 ```powershell
 cd "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows"
@@ -104,50 +103,84 @@ cd "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows"
 This interactive script will:
 
 - Detect your LAN IP
-- Ask for allowed client IPs, storage path (local or synced), and IBKR credentials
-- Create a Python virtual environment at the chosen storage path and install required packages
-- Generate `.env` file with all settings and create required directories in the chosen storage path
+- Ask for allowed client IPs, storage path, IBKR credentials, time window, and mm-control settings
+- Create a Python virtual environment and install required packages
+- Generate `.env` file with all settings and create required directories
 
-### 2. Set Up IBKR Gateway Auto-Login
+### 2. Set Up IBKR Gateway Auto-Login with IBAutomater
 
 ```powershell
 .\setup-ibkr-autologin.ps1
 ```
 
-This configures IBKR Gateway's `jts.ini` for automatic paper login.
+This script:
+- Configures `jts.ini` with credentials for automatic paper trading login
+- Sets up IBAutomater Java agent for UI automation and auto-restart
+- Copies `IBAutomater.jar` to state directory
+- Updates `ibgateway.vmoptions` to enable the Java agent
+- **Must run before installing Gateway service**
 
-### 3. Create Firewall Rules
+### 3. Create Firewall Rules (Admin Required)
 
 ```powershell
+# Run as Administrator
 .\setup-firewall.ps1
 ```
 
-Restricts API port access to configured allowed IPs and localhost only.
+Opens firewall rules for API port (8000) and IBKR Gateway port (4002/4001).
 
-### 4. Create Scheduled Tasks
+### 4. Install NSSM Service Manager (Admin Required)
 
 ```powershell
-.\setup-tasks.ps1
+# Run as Administrator
+.\install-nssm.ps1
 ```
 
-Creates all Task Scheduler jobs for automated operation.
+Downloads and installs NSSM (Non-Sucking Service Manager) for Windows service management.
 
-### 5. Generate API Key
+### 5. Install NSSM Services (Admin Required)
+
+```powershell
+# Run as Administrator
+.\install-api-service.ps1
+.\install-gateway-service.ps1
+```
+
+Creates `mm-ibkr-api` and `mm-ibkr-gateway` Windows services with:
+- Auto-start on boot
+- Auto-restart on failure (5s delay)
+- Log rotation at 10MB
+- Environment variables loaded from `.env`
+
+**Note:** Services will be in Stopped state after installation.
+
+### 6. Generate API Key
 
 ```powershell
 .\generate-api-key.ps1
 ```
 
-Generates a secure API key and saves to `secrets/api_key.txt`.
-**Copy this key to your client configuration.**
+Generates a secure API key. Copy the output to your client configuration.
 
-### 6. Verify Deployment
+### 7. Start Services
+
+```powershell
+Start-Service -Name mm-ibkr-api
+Start-Service -Name mm-ibkr-gateway
+
+# Verify both are running
+Get-Service -Name mm-ibkr-api, mm-ibkr-gateway
+```
+
+Or services will auto-start on next system boot.
+
+### 8. Verify Deployment
 
 ```powershell
 .\verify.ps1
 ```
 
-Runs all health checks and displays status.
+Runs all health checks and reports status. Check logs if any tests fail.
 
 ---
 
@@ -201,7 +234,9 @@ Located in repo root `.env` file:
 | Script | Purpose | Admin Required |
 | -------- | --------- | ------------- |
 | `configure.ps1` | Interactive setup wizard | No |
-| `setup-tasks.ps1` | Create scheduled tasks | Yes |
+| `install-nssm.ps1` | Install NSSM service manager | Yes |
+| `install-api-service.ps1` | Install API as Windows service | Yes |
+| `install-gateway-service.ps1` | Install Gateway as Windows service | Yes |
 | `setup-firewall.ps1` | Create firewall rules | Yes |
 | `setup-ibkr-autologin.ps1` | Configure IBKR auto-login | No |
 | `generate-api-key.ps1` | Generate secure API key | No |
@@ -211,33 +246,114 @@ Located in repo root `.env` file:
 
 | Script | Purpose |
 | -------- | --------- |
-| `start-gateway.ps1` | Start IBKR Gateway |
-| `stop-gateway.ps1` | Stop IBKR Gateway |
-| `start-api.ps1` | Start FastAPI server (launched via `python -m api.uvicorn_runner` which ensures stdout/stderr handling and runs `api.boot:app` to create an event loop before imports; writes PID to `LOG_DIR/api.pid` or falls back to `%TEMP%/api.pid` if ProgramData is not writable) |
-| `stop-api.ps1` | Stop FastAPI server |
-| `watchdog.ps1` | Health monitor (runs via Task Scheduler) |
-| `healthcheck.ps1` | Manual health check |
-| `status.ps1` | Show current status |
+| `status.ps1` | Show NSSM services and API health status |
+| `healthcheck.ps1` | Manual API health check |
+
+### Service Management Commands
+
+```powershell
+# Start services
+Start-Service -Name mm-ibkr-api
+Start-Service -Name mm-ibkr-gateway
+
+# Stop services
+Stop-Service -Name mm-ibkr-api
+Stop-Service -Name mm-ibkr-gateway
+
+# Restart services
+Restart-Service -Name mm-ibkr-api
+Restart-Service -Name mm-ibkr-gateway
+
+# Check service status
+Get-Service -Name mm-ibkr-api, mm-ibkr-gateway
+
+# View service logs
+Get-Content "C:\ProgramData\mm-ibkr-gateway\storage\logs\api-stdout.log" -Tail 50
+Get-Content "C:\ProgramData\mm-ibkr-gateway\storage\logs\gateway-stdout.log" -Tail 50
+```
 
 ---
 
-## Task Scheduler Tasks
+## NSSM Service Management
 
-Created by `setup-tasks.ps1`:
+Both API and Gateway run as Windows services managed by NSSM (Non-Sucking Service Manager):
 
-| Task Name | Trigger | Action |
-| --------- | --------- | -------- |
-| `IBKR-Gateway-START` | Weekdays 04:00 | Start IBKR Gateway |
-| `IBKR-API-START` | Weekdays 04:02 | Start FastAPI server |
-| `IBKR-API-STOP` | Weekdays 20:00 | Stop FastAPI server |
-| `IBKR-Gateway-STOP` | Weekdays 20:01 | Stop IBKR Gateway |
-| `IBKR-Watchdog` | Every 2 min (during window) | Health check + restart |
-| `IBKR-Boot-Reconcile` | At system startup | Ensure correct state |
+| Service | Auto-Start | Auto-Restart | Window Enforcement |
+| ------- | ---------- | ------------ | -------------------|
+| `mm-ibkr-api` | Yes (on boot) | Yes (5s delay) | Internal (API returns 503 outside window) |
+| `mm-ibkr-gateway` | Yes (on boot) | Yes (5s delay) | None (runs 24/7, IB handles daily restart) |
 
-**Task Configuration:**
+### Service Features
 
-- Run whether user is logged on or not: **Yes**
-- Run with highest privileges: **Yes**
+- **Auto-start on boot:** Services start automatically when Windows boots (no user login required)
+- **Auto-restart on failure:** NSSM restarts services within 5 seconds if they crash
+- **Log rotation:** Logs rotate automatically at 10MB
+- **Environment variables:** `.env` file loaded into service environment
+- **Window management:** API enforces `RUN_WINDOW_*` internally via middleware
+
+### Time Window Behavior
+
+**Previous approach (Task Scheduler + Watchdog):**
+- External watchdog polled every 2 minutes
+- Stopped API process outside window
+- Scheduled tasks started/stopped services
+
+**Current approach (NSSM + API internal enforcement):**
+- Services run 24/7, managed by NSSM
+- API middleware checks time window on each request
+- Returns HTTP 503 Service Unavailable outside window
+- No external polling or process management needed
+
+---
+
+## mm-control Integration
+
+The deployment integrates with [mm-control](https://github.com/your-org/mm-control) for centralized trading control:
+
+### Disable Trading
+
+```powershell
+# Disable immediately (requires confirmation)
+cd C:\Users\mikae\Coding Projects\mm-control\scripts
+.\disable-trading.ps1 -Reason "Market volatility"
+
+# Disable with 30-minute TTL auto-revert
+.\disable-trading.ps1 -Reason "Testing deployment" -TTL 30
+
+# Skip confirmation (automation)
+.\disable-trading.ps1 -Reason "Automated circuit breaker" -Force
+```
+
+### Enable Trading
+
+```powershell
+# Enable (requires confirmation)
+.\enable-trading.ps1 -Reason "Normal conditions restored"
+
+# Skip confirmation
+.\enable-trading.ps1 -Reason "TTL expired" -Force
+```
+
+### Check Trading Status
+
+```powershell
+# Via API endpoint
+Invoke-RestMethod -Uri "http://localhost:8000/control/status"
+
+# Via guard file
+Test-Path "C:\ProgramData\mm-control\TRADING_DISABLED"
+
+# Via toggles file
+Get-Content "C:\ProgramData\mm-control\toggles.json" | ConvertFrom-Json
+```
+
+### How It Works
+
+1. **Guard File:** Presence of `C:\ProgramData\mm-control\TRADING_DISABLED` blocks all trading
+2. **Toggle Store:** `C:\ProgramData\mm-control\toggles.json` provides structured state with TTL
+3. **API Middleware:** Checks `is_trading_disabled()` before processing orders (returns HTTP 403)
+4. **TTL Monitor:** Background thread in API auto-enables trading when TTL expires
+5. **Audit Log:** All actions logged to `C:\ProgramData\mm-control\control.log`
 - Stop if running longer than: **1 hour** (except watchdog)
 
 ### Manual Task Creation (Alternative to setup-tasks.ps1)
@@ -553,14 +669,15 @@ Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Wait
 
 - Orders stay blocked by default (`ORDERS_ENABLED=false`). To allow orders in paper:
   1. Set `ORDERS_ENABLED=true` in `.env`.
-  2. Ensure the arm file exists at `ARM_ORDERS_FILE` (acts as a physical guard).
+  2. Ensure mm-control guard file is NOT present (check: `C:\ProgramData\mm-control\TRADING_DISABLED`).
   3. Restart the API.
 - To switch to live trading:
   1. Set `TRADING_MODE=live` in `.env`.
   2. Set `ORDERS_ENABLED=true` only if you intend to place live orders.
-  3. Create a live trading override file at `LIVE_TRADING_OVERRIDE_FILE` (a second guard).
-  4. Ensure firewall rules, credentials, and IBKR live ports/IDs (`LIVE_GATEWAY_PORT`, `LIVE_CLIENT_ID`) are correct.
-  5. Restart Gateway and API. Verify via `.\status.ps1` and health check that `trading_mode` reports `live` before placing any orders.
+  3. Create a live trading override file at `LIVE_TRADING_OVERRIDE_FILE` (physical guard for live mode).
+  4. Ensure mm-control guard file is NOT present (check: `C:\ProgramData\mm-control\TRADING_DISABLED`).
+  5. Ensure firewall rules, credentials, and IBKR live ports/IDs (`LIVE_GATEWAY_PORT`, `LIVE_CLIENT_ID`) are correct.
+  6. Restart Gateway and API. Verify via `.\status.ps1` and health check that `trading_mode` reports `live` before placing any orders.
 
 ---
 

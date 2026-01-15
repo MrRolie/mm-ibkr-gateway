@@ -20,13 +20,14 @@ if getattr(sys, "stderr", None) is None:
     sys.stderr = _DummyStream()
 
 # Arg parsing and run
+import os
 from typing import Optional
 import argparse
 from uvicorn import run
 
 parser = argparse.ArgumentParser(description="Run uvicorn with safe stdout/stderr handling")
-parser.add_argument("--host", default="127.0.0.1")
-parser.add_argument("--port", type=int, default=8000)
+parser.add_argument("--host", default=os.getenv("API_BIND_HOST", "127.0.0.1"))
+parser.add_argument("--port", type=int, default=int(os.getenv("API_PORT", "8000")))
 parser.add_argument("--log-level", default="info")
 args = parser.parse_args()
 

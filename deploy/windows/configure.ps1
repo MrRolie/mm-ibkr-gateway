@@ -159,8 +159,24 @@ $RunWindowDays = Read-HostWithDefault -Prompt "Active days (comma-separated)" -D
 $RunWindowTimezone = Read-HostWithDefault -Prompt "Timezone" -Default "America/Toronto"
 Write-Host ""
 
-# Step 7: Safety Confirmation
-Write-Host "Step 7: Safety Settings" -ForegroundColor Yellow
+# Step 7: mm-control Configuration
+Write-Host "Step 7: mm-control Integration" -ForegroundColor Yellow
+Write-Host "mm-control provides centralized trading control (guard file + toggle store)." -ForegroundColor Gray
+Write-Host "Default location: C:\ProgramData\mm-control" -ForegroundColor Gray
+$defaultMMControlBase = "C:\ProgramData\mm-control"
+$MMControlBaseDir = Read-HostWithDefault -Prompt "mm-control base directory" -Default $defaultMMControlBase -Required
+
+Write-Host ""
+Write-Host "Enable background TTL monitor in API?" -ForegroundColor Gray
+Write-Host "  This allows automatic re-enabling of trading when TTL expires." -ForegroundColor Gray
+$enableMonitor = Read-HostWithDefault -Prompt "Enable TTL monitor? (Y/n)" -Default "Y"
+$MMControlEnableMonitor = if ($enableMonitor -eq "Y" -or $enableMonitor -eq "y") { "true" } else { "false" }
+
+$MMControlCheckInterval = Read-HostWithDefault -Prompt "TTL check interval (seconds)" -Default "30"
+Write-Host ""
+
+# Step 8: Safety Confirmation
+Write-Host "Step 8: Safety Settings" -ForegroundColor Yellow
 Write-Host "SAFETY: Orders are DISABLED by default. Paper trading mode only." -ForegroundColor Green
 Write-Host "To enable orders later, set ORDERS_ENABLED=true and create the arm file."
 $TradingMode = "paper"
@@ -173,7 +189,6 @@ Write-Host "Creating directories..." -ForegroundColor Cyan
 # Storage directories
 $LogDir = Join-Path $StorageBasePath "logs"
 $AuditDbPath = Join-Path $StorageBasePath "audit.db"
-$ArmFilePath = Join-Path $StorageBasePath "arm_orders_confirmed.txt"
 
 if (-not (Test-Path $StorageBasePath)) {
     New-Item -ItemType Directory -Path $StorageBasePath -Force | Out-Null
@@ -457,9 +472,6 @@ TRADING_MODE=$TradingMode
 # Order placement: false = disabled, true = ENABLED
 ORDERS_ENABLED=$OrdersEnabled
 
-# Arm file path (must exist to place orders when ORDERS_ENABLED=true)
-ARM_ORDERS_FILE=$ArmFilePath
-
 # Live trading override (required for live trading with orders enabled)
 LIVE_TRADING_OVERRIDE_FILE=
 
@@ -492,7 +504,7 @@ LIVE_GATEWAY_PORT=4001
 LIVE_CLIENT_ID=777
 
 # =============================================================================
-# TIME WINDOW SETTINGS
+# TIME WINDOW SETTINGS (Development / Advanced)
 # =============================================================================
 
 # Services run only during this window
@@ -516,6 +528,19 @@ LOG_DIR=$LogDir
 
 # IBKR Gateway installation path
 IBKR_GATEWAY_PATH=$GatewayPath
+
+# =============================================================================
+# MM-CONTROL SETTINGS
+# =============================================================================
+
+# mm-control base directory (guard file + toggles.json location)
+MM_CONTROL_BASE_DIR=$MMControlBaseDir
+
+# Enable background TTL monitor in API (auto-enables trading when TTL expires)
+MM_CONTROL_ENABLE_BACKGROUND_MONITOR=$MMControlEnableMonitor
+
+# TTL check interval in seconds
+MM_CONTROL_TTL_CHECK_INTERVAL=$MMControlCheckInterval
 
 # =============================================================================
 # LOGGING SETTINGS
@@ -596,9 +621,11 @@ Write-Host "  Orders Enabled:  $OrdersEnabled"
 Write-Host "  Run Window:      $RunWindowDays $RunWindowStart - $RunWindowEnd ($RunWindowTimezone)"
 
 Write-Host "`nNext Steps:" -ForegroundColor Yellow
-Write-Host "  1. Run: .\setup-ibkr-autologin.ps1  (configure gateway auto-login)"
-Write-Host "  2. Run: .\generate-api-key.ps1     (create API key)"
-Write-Host "  3. Run: .\setup-firewall.ps1       (requires admin)"
-Write-Host "  4. Run: .\setup-tasks.ps1          (requires admin)"
-Write-Host "  5. Run: .\verify.ps1               (validate deployment)"
+Write-Host "  1. Run: .\setup-ibkr-autologin.ps1    (configure gateway auto-login)"
+Write-Host "  2. Run: .\generate-api-key.ps1       (create API key)"
+Write-Host "  3. Run: .\setup-firewall.ps1         (requires admin)"
+Write-Host "  4. Run: .\install-nssm.ps1           (install NSSM service manager, requires admin)"
+Write-Host "  5. Run: .\install-api-service.ps1    (install API service, requires admin)"
+Write-Host "  6. Run: .\install-gateway-service.ps1 (install Gateway service, requires admin)"
+Write-Host "  7. Run: .\verify.ps1                 (validate deployment)"
 Write-Host ""

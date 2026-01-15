@@ -223,56 +223,38 @@ if ($firewallRules) {
 Write-Host ""
 
 # ============================================================================
-# Scheduled Tasks Checks
+# NSSM Services Checks
 # ============================================================================
-Write-Host "SCHEDULED TASKS" -ForegroundColor White
+Write-Host "NSSM SERVICES" -ForegroundColor White
 
-# Read optional task flags
-$stopTasksEnabled = $false
-$gatewayStartEnabled = $false
-if ($env:STOP_TASKS_ENABLED) { [bool]::TryParse($env:STOP_TASKS_ENABLED, [ref]$stopTasksEnabled) | Out-Null }
-if ($env:START_GATEWAY_TASK_ENABLED) { [bool]::TryParse($env:START_GATEWAY_TASK_ENABLED, [ref]$gatewayStartEnabled) | Out-Null }
+$expectedServices = @("mm-ibkr-api", "mm-ibkr-gateway")
 
-$expectedTasks = @()
-if ($gatewayStartEnabled) { $expectedTasks += "IBKR-Gateway-START" }
-$expectedTasks += "IBKR-API-START"
-if ($stopTasksEnabled) {
-    $expectedTasks += "IBKR-API-STOP"
-    $expectedTasks += "IBKR-Gateway-STOP"
-}
-$expectedTasks += "IBKR-Watchdog"
-$expectedTasks += "IBKR-Boot-Reconcile"
-
-$tasks = Get-ScheduledTask -TaskPath "\mm-tasks\" -ErrorAction SilentlyContinue
-if ($tasks) {
-    $taskNames = $tasks.TaskName
-    
-    foreach ($expectedTask in $expectedTasks) {
-        if ($expectedTask -in $taskNames) {
-            $task = $tasks | Where-Object { $_.TaskName -eq $expectedTask }
-            Write-Check $expectedTask "PASS" $task.State
-        } else {
-            Write-Check $expectedTask "WARN" "Not found (task optional in current config)"
+foreach ($serviceName in $expectedServices) {
+    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($service) {
+        $statusColor = switch ($service.Status) {
+            "Running" { "Green" }
+            "Stopped" { "Yellow" }
+            default { "Red" }
         }
-    }
-} else {
-    # Fallback to schtasks for older systems
-    $taskOutput = schtasks /query /fo CSV /tn "\mm-ibkr-gateway\*" 2>$null
-    if ($taskOutput) {
-        $tasks = $taskOutput | ConvertFrom-Csv
-        $taskNames = $tasks | ForEach-Object { $_.TaskName -replace "\\mm-ibkr-gateway\\", "" }
+        Write-Check "$serviceName installed" "PASS" "Status: $($service.Status)"
         
-        foreach ($expectedTask in $expectedTasks) {
-            if ($expectedTask -in $taskNames) {
-                $task = $tasks | Where-Object { $_.TaskName -match $expectedTask }
-                Write-Check $expectedTask "PASS" $task.Status
-            } else {
-                Write-Check $expectedTask "WARN" "Not found (task optional in current config)"
-            }
+        if ($service.StartType -eq "Automatic") {
+            Write-Check "  Auto-start enabled" "PASS"
+        } else {
+            Write-Check "  Auto-start enabled" "WARN" "StartType: $($service.StartType)"
         }
     } else {
-        Write-Check "Scheduled tasks" "WARN" "No tasks found (tasks optional; run setup-tasks.ps1 if desired)"
+        Write-Check "$serviceName installed" "FAIL" "Run install-$($serviceName -replace 'mm-ibkr-','')-service.ps1"
     }
+}
+
+# Check if NSSM is installed
+$nssmPath = "C:\Program Files\NSSM\nssm.exe"
+if (Test-Path $nssmPath) {
+    Write-Check "NSSM installed" "PASS"
+} else {
+    Write-Check "NSSM installed" "FAIL" "Run install-nssm.ps1"
 }
 
 Write-Host ""

@@ -54,29 +54,44 @@ if (-not $inWindow) {
 }
 Write-Host ""
 
-# Process status
-Write-Host "PROCESSES" -ForegroundColor White
-$gatewayProcess = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
-if ($gatewayProcess) {
-    Write-Host "  IBKR Gateway:    " -NoNewline
-    Write-Host "Running (PID: $($gatewayProcess.Id))" -ForegroundColor Green
+# NSSM Services status
+Write-Host "NSSM SERVICES" -ForegroundColor White
+
+$apiService = Get-Service -Name "mm-ibkr-api" -ErrorAction SilentlyContinue
+if ($apiService) {
+    $statusColor = if ($apiService.Status -eq "Running") { "Green" } else { "Red" }
+    Write-Host "  mm-ibkr-api:     " -NoNewline
+    Write-Host "$($apiService.Status)" -ForegroundColor $statusColor
+    if ($apiService.Status -eq "Running") {
+        # Find the Python process
+        $pythonProcesses = Get-Process -Name "python", "python3" -ErrorAction SilentlyContinue
+        $apiProcess = $pythonProcesses | Where-Object {
+            $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+            $cmdLine -match "uvicorn|api\.server"
+        } | Select-Object -First 1
+        if ($apiProcess) {
+            Write-Host "                   PID: $($apiProcess.Id)" -ForegroundColor Gray
+        }
+    }
 } else {
-    Write-Host "  IBKR Gateway:    " -NoNewline
-    Write-Host "Not Running" -ForegroundColor Red
+    Write-Host "  mm-ibkr-api:     " -NoNewline
+    Write-Host "NOT INSTALLED" -ForegroundColor Yellow
 }
 
-$pythonProcesses = Get-Process -Name "python", "python3" -ErrorAction SilentlyContinue
-$apiProcess = $pythonProcesses | Where-Object {
-    $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
-    $cmdLine -match "uvicorn|api\.server"
-} | Select-Object -First 1
-
-if ($apiProcess) {
-    Write-Host "  API Server:      " -NoNewline
-    Write-Host "Running (PID: $($apiProcess.Id))" -ForegroundColor Green
+$gatewayService = Get-Service -Name "mm-ibkr-gateway" -ErrorAction SilentlyContinue
+if ($gatewayService) {
+    $statusColor = if ($gatewayService.Status -eq "Running") { "Green" } else { "Red" }
+    Write-Host "  mm-ibkr-gateway: " -NoNewline
+    Write-Host "$($gatewayService.Status)" -ForegroundColor $statusColor
+    if ($gatewayService.Status -eq "Running") {
+        $gatewayProcess = Get-Process -Name "ibgateway" -ErrorAction SilentlyContinue
+        if ($gatewayProcess) {
+            Write-Host "                   PID: $($gatewayProcess.Id)" -ForegroundColor Gray
+        }
+    }
 } else {
-    Write-Host "  API Server:      " -NoNewline
-    Write-Host "Not Running" -ForegroundColor Red
+    Write-Host "  mm-ibkr-gateway: " -NoNewline
+    Write-Host "NOT INSTALLED" -ForegroundColor Yellow
 }
 Write-Host ""
 
@@ -133,68 +148,38 @@ if ($env:DATA_STORAGE_DIR) {
         Write-Host "NOT ACCESSIBLE" -ForegroundColor Red
     }
 }
+Write-Host ""
 
-# Check arm file
-$armFile = $env:ARM_ORDERS_FILE
-if ($armFile) {
-    Write-Host "  Arm File:        " -NoNewline
-    if (Test-Path $armFile) {
-        Write-Host "EXISTS (orders can be placed)" -ForegroundColor Yellow
-    } else {
-        Write-Host "Not present (orders blocked)" -ForegroundColor Green
+# mm-control status
+Write-Host "MM-CONTROL" -ForegroundColor White
+$guardFile = "C:\ProgramData\mm-control\TRADING_DISABLED"
+if (Test-Path $guardFile) {
+    Write-Host "  Trading Status:  " -NoNewline
+    Write-Host "DISABLED" -ForegroundColor Red
+    $guardContent = Get-Content $guardFile -Raw
+    if ($guardContent) {
+        Write-Host "  Guard Reason:    $($guardContent.Split('|')[2].Trim())" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "  Trading Status:  " -NoNewline
+    Write-Host "ENABLED" -ForegroundColor Green
+}
+
+$togglesFile = "C:\ProgramData\mm-control\toggles.json"
+if (Test-Path $togglesFile) {
+    try {
+        $toggles = Get-Content $togglesFile | ConvertFrom-Json
+        Write-Host "  Toggle Store:    Present" -ForegroundColor Gray
+        if ($toggles.expires_at) {
+            Write-Host "  TTL Expiry:      $($toggles.expires_at)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "  Toggle Store:    Error reading" -ForegroundColor Yellow
     }
 }
 Write-Host ""
 
-# Scheduled tasks
-Write-Host "SCHEDULED TASKS" -ForegroundColor White
-if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
-    $tasks = Get-ScheduledTask -TaskPath "\mm-tasks\" -ErrorAction SilentlyContinue
-    if (-not $tasks) {
-        # Fallback: query all tasks and filter (handles wildcard limitations)
-        $tasks = schtasks /query /fo CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\\mm-ibkr-gateway\\*" }
-    }
-} else {
-    $tasks = schtasks /query /fo CSV 2>$null | ConvertFrom-Csv | Where-Object { $_.TaskName -like "\\mm-ibkr-gateway\\*" }
-}
 
-if ($tasks) {
-    foreach ($task in $tasks) {
-        $taskName = $task.TaskName -replace "\\mm-ibkr-gateway\\", ""
-        $status = if ($task.Status) { $task.Status } else { $task.State }
-        $statusColor = switch ($status) {
-            "Ready" { "Green" }
-            "Running" { "Cyan" }
-            "Disabled" { "Yellow" }
-            default { "Gray" }
-        }
-        Write-Host "  $taskName : " -NoNewline
-        Write-Host $status -ForegroundColor $statusColor
-    }
-} else {
-    Write-Host "  No tasks found. Run setup-tasks.ps1" -ForegroundColor Yellow
-}
-Write-Host ""
-
-# Restart state
-$stateFile = "C:\ProgramData\mm-ibkr-gateway\restart_state.json"
-if (Test-Path $stateFile) {
-    Write-Host "RESTART STATE" -ForegroundColor White
-    $state = Get-Content $stateFile | ConvertFrom-Json
-    if ($state.gateway) {
-        Write-Host "  Gateway restarts (this hour): $($state.gateway.count)"
-        if ($state.gateway.lastRestart) {
-            Write-Host "  Gateway last restart: $($state.gateway.lastRestart)"
-        }
-    }
-    if ($state.api) {
-        Write-Host "  API restarts (this hour): $($state.api.count)"
-        if ($state.api.lastRestart) {
-            Write-Host "  API last restart: $($state.api.lastRestart)"
-        }
-    }
-    Write-Host ""
-}
 
 Write-Host ("=" * 60) -ForegroundColor Cyan
 Write-Host ""

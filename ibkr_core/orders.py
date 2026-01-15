@@ -949,7 +949,28 @@ def place_order(
             errors=validation_errors,
         )
 
-    # Safety check: ORDERS_ENABLED
+    # Safety check: mm-control guard file (highest precedence)
+    try:
+        from mm_control.guard import is_trading_disabled
+
+        if is_trading_disabled():
+            logger.warning(
+                f"mm-control guard active (TRADING_DISABLED exists) - "
+                f"returning simulated result for {order_spec.side} {order_spec.quantity} {symbol}"
+            )
+            return OrderResult(
+                orderId=None,
+                clientOrderId=order_spec.clientOrderId,
+                status="SIMULATED",
+                orderStatus=None,
+                errors=["Order not placed: mm-control guard file active (trading disabled)"],
+            )
+    except ImportError:
+        # mm-control not installed - skip guard check
+        logger.debug("mm-control not installed - guard file check skipped")
+        pass
+
+    # Safety check: ORDERS_ENABLED (secondary check)
     if not config.orders_enabled:
         logger.info(
             f"ORDERS_ENABLED=false - returning simulated result for "

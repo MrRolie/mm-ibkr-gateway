@@ -55,9 +55,6 @@ class Config:
     data_storage_dir: Optional[str]
     log_dir: Optional[str]
 
-    # Arm file for orders (additional safety layer)
-    arm_orders_file: Optional[str]
-
     # Override file for live trading (for extra safety)
     live_trading_override_file: Optional[str]
 
@@ -149,7 +146,6 @@ def load_config() -> Config:
     # Path settings
     data_storage_dir = os.getenv("DATA_STORAGE_DIR")
     log_dir = os.getenv("LOG_DIR")
-    arm_orders_file = os.getenv("ARM_ORDERS_FILE")
 
     # Live Trading Override
     live_trading_override_file = os.getenv("LIVE_TRADING_OVERRIDE_FILE")
@@ -167,7 +163,6 @@ def load_config() -> Config:
         log_level=log_level,
         data_storage_dir=data_storage_dir,
         log_dir=log_dir,
-        arm_orders_file=arm_orders_file,
         live_trading_override_file=live_trading_override_file,
     )
 

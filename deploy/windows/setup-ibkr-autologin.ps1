@@ -206,9 +206,98 @@ Write-Host "To encrypt with EFS (optional):" -ForegroundColor Gray
 Write-Host "  cipher /e `"$JtsConfigDir`"" -ForegroundColor White
 Write-Host ""
 
-Write-Host "=== Configuration Complete ===" -ForegroundColor Green
+# ============================================================================
+# IBAutomater Setup (Java agent for auto-login and UI automation)
+# ============================================================================
+
+Write-Host "`n=== Setting up IBAutomater ===" -ForegroundColor Cyan
+
+$StateDir = "C:\ProgramData\mm-ibkr-gateway"
+$JarSource = Join-Path $ScriptDir "ibautomater\IBAutomater.jar"
+$JarTarget = Join-Path $StateDir "IBAutomater.jar"
+$AgentConfigPath = Join-Path $StateDir "IBAutomater.json"
+
+# Create state directory if needed
+if (-not (Test-Path $StateDir)) {
+    New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
+    Write-Host "Created state directory: $StateDir" -ForegroundColor Gray
+}
+
+# Copy IBAutomater.jar
+if (-not (Test-Path $JarSource)) {
+    Write-Host "WARNING: IBAutomater.jar not found at $JarSource" -ForegroundColor Yellow
+    Write-Host "IBAutomater will be unavailable for auto-login" -ForegroundColor Yellow
+    Write-Host "The gateway will prompt for manual login" -ForegroundColor Gray
+} else {
+    try {
+        if ((Test-Path $JarTarget) -and (Get-Item $JarSource).Length -eq (Get-Item $JarTarget).Length) {
+            Write-Host "IBAutomater.jar already in place, skipping copy" -ForegroundColor Gray
+        } else {
+            Copy-Item $JarSource $JarTarget -Force -ErrorAction Stop
+            Write-Host "Copied IBAutomater.jar to: $JarTarget" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "ERROR: Could not copy IBAutomater.jar: $_" -ForegroundColor Red
+        exit 1
+    }
+
+    # Create IBAutomater config file
+    $tradingMode = if ($env:TRADING_MODE -eq "live") { "live" } else { "paper" }
+    $gatewayPort = if ($tradingMode -eq "live") {
+        if ($env:LIVE_GATEWAY_PORT) { [int]$env:LIVE_GATEWAY_PORT } else { 4001 }
+    } else {
+        if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
+    }
+    
+    $agentConfig = @(
+        $Username
+        $Password
+        $tradingMode
+        $gatewayPort
+        "false"  # exportLogs
+        "false"  # isRestart
+    ) -join "`n"
+    
+    try {
+        Set-Content -Path $AgentConfigPath -Value $agentConfig -Encoding UTF8 -ErrorAction Stop
+        Write-Host "Created IBAutomater config: $AgentConfigPath" -ForegroundColor Green
+    } catch {
+        Write-Host "WARNING: Could not write IBAutomater config: $_" -ForegroundColor Yellow
+    }
+
+    # Update ibgateway.vmoptions to enable the Java agent
+    $vmOptionsPath = Join-Path $GatewayPath "ibgateway.vmoptions"
+    $javaAgentLine = "-javaagent:$JarTarget=$AgentConfigPath"
+    
+    try {
+        if (Test-Path $vmOptionsPath) {
+            $vmLines = @(Get-Content $vmOptionsPath)
+            # Remove any existing IBAutomater entries
+            $vmLines = $vmLines | Where-Object { $_ -notmatch "IBAutomater\.jar" }
+            # Add new entry
+            $vmLines += $javaAgentLine
+            Set-Content -Path $vmOptionsPath -Value $vmLines -Encoding UTF8
+            Write-Host "Updated ibgateway.vmoptions with javaagent: $vmOptionsPath" -ForegroundColor Green
+        } else {
+            Set-Content -Path $vmOptionsPath -Value @($javaAgentLine) -Encoding UTF8
+            Write-Host "Created ibgateway.vmoptions with javaagent: $vmOptionsPath" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "WARNING: Could not update ibgateway.vmoptions: $_" -ForegroundColor Yellow
+        Write-Host "You may need to manually add: $javaAgentLine" -ForegroundColor Yellow
+    }
+}
+
+Write-Host "`n=== Configuration Complete ===" -ForegroundColor Green
+Write-Host ""
+Write-Host "Summary:" -ForegroundColor Cyan
+Write-Host "  jts.ini:              $JtsIniPath"
+Write-Host "  IBAutomater JAR:      $JarTarget"
+Write-Host "  IBAutomater Config:   $AgentConfigPath"
+Write-Host "  VM Options:           $vmOptionsPath"
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Test IBKR Gateway manually: Start it and verify auto-login works"
-Write-Host "  2. If login fails, check credentials and retry this script"
+Write-Host "  2. If login fails, check $AgentConfigPath and credentials"
+Write-Host "  3. Run install-gateway-service.ps1 to configure the Windows service"
 Write-Host ""
