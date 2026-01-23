@@ -2,12 +2,16 @@
 Tests for the schedule module.
 """
 
+import os
 from datetime import datetime, time
-from unittest.mock import patch
 from zoneinfo import ZoneInfo
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from ibkr_core.config import reset_config
+from ibkr_core.runtime_config import load_config_data, write_config_data
 from ibkr_core.schedule import (
     ScheduleConfig,
     get_next_window_end,
@@ -15,6 +19,22 @@ from ibkr_core.schedule import (
     get_window_status,
     is_within_run_window,
 )
+
+
+@pytest.fixture(autouse=True)
+def runtime_config_fixture(tmp_path):
+    """Ensure config.json is isolated per test."""
+    reset_config()
+    old_path = os.environ.get("MM_IBKR_CONFIG_PATH")
+    config_path = tmp_path / "config.json"
+    os.environ["MM_IBKR_CONFIG_PATH"] = str(config_path)
+    load_config_data(create_if_missing=True)
+    yield
+    if old_path is not None:
+        os.environ["MM_IBKR_CONFIG_PATH"] = old_path
+    else:
+        os.environ.pop("MM_IBKR_CONFIG_PATH", None)
+    reset_config()
 
 
 class TestScheduleConfig:
@@ -39,20 +59,22 @@ class TestScheduleConfig:
         assert config.timezone == ZoneInfo("America/New_York")
 
     def test_from_env(self):
-        """Test loading config from environment."""
-        with patch.dict(
-            "os.environ",
+        """Test loading config from runtime config."""
+        config_data = load_config_data()
+        config_data.update(
             {
-                "RUN_WINDOW_START": "08:00",
-                "RUN_WINDOW_END": "18:00",
-                "RUN_WINDOW_DAYS": "Mon,Tue,Wed",
-                "RUN_WINDOW_TIMEZONE": "UTC",
-            },
-        ):
-            config = ScheduleConfig.from_env()
-            assert config.start_time == time(8, 0)
-            assert config.end_time == time(18, 0)
-            assert config.days == {0, 1, 2}
+                "run_window_start": "08:00",
+                "run_window_end": "18:00",
+                "run_window_days": "Mon,Tue,Wed",
+                "run_window_timezone": "UTC",
+            }
+        )
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+
+        config = ScheduleConfig.from_env()
+        assert config.start_time == time(8, 0)
+        assert config.end_time == time(18, 0)
+        assert config.days == {0, 1, 2}
 
     def test_parse_days_case_insensitive(self):
         """Test that day parsing is case-insensitive."""

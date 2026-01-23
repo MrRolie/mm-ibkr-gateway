@@ -124,7 +124,7 @@ def main() -> int:
         "mode",
         nargs="?",
         choices=["paper", "live"],
-        help="Trading mode to test (paper or live). If not specified, uses TRADING_MODE from .env",
+        help="Trading mode to test (paper or live). If not specified, uses control.json",
     )
     args = parser.parse_args()
 

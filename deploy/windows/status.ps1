@@ -25,9 +25,37 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Configuration
-$gatewayPort = if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
-$apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
-$apiHost = if ($env:API_BIND_HOST) { $env:API_BIND_HOST } else { "127.0.0.1" }
+$config = Import-GatewayConfig
+$apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
+$apiHost = Get-GatewayConfigValue $config "api_bind_host" "127.0.0.1"
+$allowedIps = Get-GatewayConfigValue $config "allowed_ips" "127.0.0.1"
+$paperPort = [int](Get-GatewayConfigValue $config "paper_gateway_port" 4002)
+$livePort = [int](Get-GatewayConfigValue $config "live_gateway_port" 4001)
+$runWindowStart = Get-GatewayConfigValue $config "run_window_start" "04:00"
+$runWindowEnd = Get-GatewayConfigValue $config "run_window_end" "20:00"
+$runWindowDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,Thu,Fri"
+$runWindowTimezone = Get-GatewayConfigValue $config "run_window_timezone" "America/Toronto"
+$dataStorageDir = Get-GatewayConfigValue $config "data_storage_dir" $null
+
+$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlFile = Join-Path $controlBaseDir "control.json"
+$tradingMode = "paper"
+$ordersEnabled = $null
+$dryRun = $null
+$overrideFile = $null
+if (Test-Path $controlFile) {
+    try {
+        $controlState = Get-Content -Path $controlFile -Raw | ConvertFrom-Json
+        if ($controlState.trading_mode) { $tradingMode = $controlState.trading_mode }
+        $ordersEnabled = $controlState.orders_enabled
+        $dryRun = $controlState.dry_run
+        $overrideFile = $controlState.live_trading_override_file
+    } catch {
+        $tradingMode = "paper"
+    }
+}
+
+$gatewayPort = if ($tradingMode -eq "live") { $livePort } else { $paperPort }
 
 Write-Host ("`n" + ("=" * 60)) -ForegroundColor Cyan
 Write-Host "  mm-ibkr-gateway Status" -ForegroundColor Cyan
@@ -43,8 +71,9 @@ Write-Host "TIME & SCHEDULE" -ForegroundColor White
 Write-Host "  Current Time:    $($now.ToString('yyyy-MM-dd HH:mm:ss'))"
 Write-Host "  In Run Window:   " -NoNewline
 Write-Host "$inWindow" -ForegroundColor $windowColor
-Write-Host "  Window Hours:    $env:RUN_WINDOW_START - $env:RUN_WINDOW_END"
-Write-Host "  Window Days:     $env:RUN_WINDOW_DAYS"
+Write-Host "  Window Hours:    $runWindowStart - $runWindowEnd"
+Write-Host "  Window Days:     $runWindowDays"
+Write-Host "  Window TZ:       $runWindowTimezone"
 
 if (-not $inWindow) {
     $nextStart = Get-NextWindowStart
@@ -110,7 +139,7 @@ Write-Host "  API Port:        $apiPort " -NoNewline
 Write-Host $(if ($apiListening) { "[LISTENING]" } else { "[NOT LISTENING]" }) -ForegroundColor $apiPortColor
 
 Write-Host "  API Bind Host:   $apiHost"
-Write-Host "  Allowed IPs:     $env:ALLOWED_IPS"
+Write-Host "  Allowed IPs:     $allowedIps"
 Write-Host ""
 
 # Health check
@@ -134,13 +163,24 @@ if ($apiListening) {
 
 # Configuration
 Write-Host "CONFIGURATION" -ForegroundColor White
-Write-Host "  Trading Mode:    $env:TRADING_MODE"
-Write-Host "  Orders Enabled:  $env:ORDERS_ENABLED"
-Write-Host "  Storage Path:    $env:DATA_STORAGE_DIR"
+$configPath = Get-GatewayConfigPath
+Write-Host "  config.json:     $configPath"
+Write-Host "  Control File:    $controlFile"
+Write-Host "  Trading Mode:    $tradingMode"
+if ($null -ne $ordersEnabled) {
+    Write-Host "  Orders Enabled:  $ordersEnabled"
+}
+if ($null -ne $dryRun) {
+    Write-Host "  Dry Run:         $dryRun"
+}
+if ($overrideFile) {
+    Write-Host "  Override File:   $overrideFile"
+}
+Write-Host "  Storage Path:    $dataStorageDir"
 
 # Check storage path accessibility
-if ($env:DATA_STORAGE_DIR) {
-    if (Test-Path $env:DATA_STORAGE_DIR) {
+if ($dataStorageDir) {
+    if (Test-Path $dataStorageDir) {
         Write-Host "  Drive Status:    " -NoNewline
         Write-Host "Accessible" -ForegroundColor Green
     } else {
@@ -152,7 +192,7 @@ Write-Host ""
 
 # mm-control status
 Write-Host "MM-CONTROL" -ForegroundColor White
-$guardFile = "C:\ProgramData\mm-control\TRADING_DISABLED"
+$guardFile = Join-Path $controlBaseDir "TRADING_DISABLED"
 if (Test-Path $guardFile) {
     Write-Host "  Trading Status:  " -NoNewline
     Write-Host "DISABLED" -ForegroundColor Red
@@ -165,17 +205,10 @@ if (Test-Path $guardFile) {
     Write-Host "ENABLED" -ForegroundColor Green
 }
 
-$togglesFile = "C:\ProgramData\mm-control\toggles.json"
-if (Test-Path $togglesFile) {
-    try {
-        $toggles = Get-Content $togglesFile | ConvertFrom-Json
-        Write-Host "  Toggle Store:    Present" -ForegroundColor Gray
-        if ($toggles.expires_at) {
-            Write-Host "  TTL Expiry:      $($toggles.expires_at)" -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Host "  Toggle Store:    Error reading" -ForegroundColor Yellow
-    }
+if (Test-Path $controlFile) {
+    Write-Host "  Control File:    Present" -ForegroundColor Gray
+} else {
+    Write-Host "  Control File:    Missing" -ForegroundColor Yellow
 }
 Write-Host ""
 

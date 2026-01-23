@@ -29,6 +29,70 @@ function Import-EnvFile {
     }
 }
 
+function Get-GatewayConfigPath {
+    <#
+    .SYNOPSIS
+        Get config.json path (override with MM_IBKR_CONFIG_PATH).
+    #>
+    if ($env:MM_IBKR_CONFIG_PATH) {
+        return $env:MM_IBKR_CONFIG_PATH
+    }
+    return "C:\ProgramData\mm-ibkr-gateway\config.json"
+}
+
+function Import-GatewayConfig {
+    <#
+    .SYNOPSIS
+        Load gateway config.json (returns PSCustomObject or $null).
+    #>
+    param(
+        [string]$ConfigPath
+    )
+
+    $path = if ($ConfigPath) { $ConfigPath } else { Get-GatewayConfigPath }
+    if (-not (Test-Path $path)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Path $path -Raw | ConvertFrom-Json
+    } catch {
+        Write-Warning "Failed to read config.json at $path: $_"
+        return $null
+    }
+}
+
+function Get-GatewayConfigValue {
+    <#
+    .SYNOPSIS
+        Get a config.json value with a default fallback.
+    #>
+    param(
+        [object]$Config,
+        [string]$Name,
+        $Default
+    )
+
+    if ($null -eq $Config) {
+        return $Default
+    }
+
+    $prop = $Config.PSObject.Properties[$Name]
+    if ($null -eq $prop) {
+        return $Default
+    }
+
+    $value = $prop.Value
+    if ($null -eq $value) {
+        return $Default
+    }
+    if ($value -is [string] -and [string]::IsNullOrWhiteSpace($value)) {
+        return $Default
+    }
+
+    return $value
+}
+
 function Test-RunWindow {
     <#
     .SYNOPSIS
@@ -39,16 +103,17 @@ function Test-RunWindow {
     #>
     
     # Get configuration
-    $startTime = if ($env:RUN_WINDOW_START) { $env:RUN_WINDOW_START } else { "04:00" }
-    $endTime = if ($env:RUN_WINDOW_END) { $env:RUN_WINDOW_END } else { "20:00" }
-    $runDays = if ($env:RUN_WINDOW_DAYS) { $env:RUN_WINDOW_DAYS } else { "Mon,Tue,Wed,Thu,Fri" }
+    $config = Import-GatewayConfig
+    $startTime = Get-GatewayConfigValue $config "run_window_start" "04:00"
+    $endTime = Get-GatewayConfigValue $config "run_window_end" "20:00"
+    $runDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,Thu,Fri"
     
     # Parse times
     try {
         $start = [DateTime]::ParseExact($startTime, "HH:mm", $null)
         $end = [DateTime]::ParseExact($endTime, "HH:mm", $null)
     } catch {
-        Write-Warning "Invalid time format in RUN_WINDOW_START/END. Using defaults."
+        Write-Warning "Invalid time format in run_window_start/end. Using defaults."
         $start = [DateTime]::ParseExact("04:00", "HH:mm", $null)
         $end = [DateTime]::ParseExact("20:00", "HH:mm", $null)
     }
@@ -101,8 +166,9 @@ function Get-NextWindowStart {
         DateTime - Next window start time.
     #>
     
-    $startTime = if ($env:RUN_WINDOW_START) { $env:RUN_WINDOW_START } else { "04:00" }
-    $runDays = if ($env:RUN_WINDOW_DAYS) { $env:RUN_WINDOW_DAYS } else { "Mon,Tue,Wed,Thu,Fri" }
+    $config = Import-GatewayConfig
+    $startTime = Get-GatewayConfigValue $config "run_window_start" "04:00"
+    $runDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,Thu,Fri"
     
     $start = [DateTime]::ParseExact($startTime, "HH:mm", $null)
     $now = Get-Date
@@ -144,8 +210,9 @@ function Get-NextWindowEnd {
         DateTime - Next window end time.
     #>
     
-    $endTime = if ($env:RUN_WINDOW_END) { $env:RUN_WINDOW_END } else { "20:00" }
-    $runDays = if ($env:RUN_WINDOW_DAYS) { $env:RUN_WINDOW_DAYS } else { "Mon,Tue,Wed,Thu,Fri" }
+    $config = Import-GatewayConfig
+    $endTime = Get-GatewayConfigValue $config "run_window_end" "20:00"
+    $runDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,Thu,Fri"
     
     $end = [DateTime]::ParseExact($endTime, "HH:mm", $null)
     $now = Get-Date
@@ -362,7 +429,8 @@ function Write-Log {
         [string]$Level = "INFO"
     )
     
-    $logDir = if ($env:LOG_FILE_PATH) { $env:LOG_FILE_PATH } else { "C:\ProgramData\mm-ibkr-gateway\logs" }
+    $config = Import-GatewayConfig
+    $logDir = Get-GatewayConfigValue $config "watchdog_log_dir" "C:\ProgramData\mm-ibkr-gateway\logs"
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }

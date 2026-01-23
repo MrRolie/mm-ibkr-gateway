@@ -1,13 +1,24 @@
 """
 Configuration management and safety rails for IBKR integration.
+
+Trading controls (trading_mode, orders_enabled, live_trading_override_file)
+are loaded from mm-control's control.json for centralized management.
+
+Other settings (IBKR connection, API port, paths) are loaded from the
+ProgramData config.json file.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+
+from ibkr_core.runtime_config import load_runtime_config
+
+logger = logging.getLogger(__name__)
 
 # Load .env file
 env_file = Path(__file__).parent.parent / ".env"
@@ -49,11 +60,31 @@ class Config:
     # API Server
     api_port: int
     api_bind_host: str
+    api_request_timeout: float
+    allowed_ips: str
     log_level: str
+    log_format: str
 
     # Path settings
     data_storage_dir: Optional[str]
     log_dir: Optional[str]
+    audit_db_path: str
+    watchdog_log_dir: str
+    ibkr_gateway_path: str
+
+    # Run window settings
+    run_window_start: str
+    run_window_end: str
+    run_window_days: str
+    run_window_timezone: str
+
+    # mm-control settings
+    mm_control_base_dir: str
+    mm_control_enable_background_monitor: bool
+    mm_control_ttl_check_interval: int
+
+    # Admin settings
+    admin_restart_enabled: bool
 
     # Override file for live trading (for extra safety)
     live_trading_override_file: Optional[str]
@@ -81,74 +112,94 @@ class Config:
                 override_path = Path(self.live_trading_override_file)
                 if not override_path.exists():
                     raise InvalidConfigError(
-                        f"TRADING_MODE=live and ORDERS_ENABLED=true requires override file "
+                        "Live trading with orders enabled requires override file "
                         f"at {self.live_trading_override_file}"
                     )
             else:
                 raise InvalidConfigError(
-                    "TRADING_MODE=live and ORDERS_ENABLED=true is extremely dangerous. "
-                    "Set LIVE_TRADING_OVERRIDE_FILE to proceed."
+                    "Live trading with orders enabled is extremely dangerous. "
+                    "Set live_trading_override_file in control.json to proceed."
                 )
 
     def check_trading_enabled(self) -> None:
         """Raise TradingDisabledError if orders are not enabled."""
         if not self.orders_enabled:
             raise TradingDisabledError(
-                "Order placement is disabled (ORDERS_ENABLED=false). "
-                "Set ORDERS_ENABLED=true in .env to enable."
+                "Order placement is disabled (orders_enabled=false). "
+                "Update control.json to enable."
             )
 
 
 def load_config() -> Config:
-    """Load and validate configuration from environment."""
+    """Load and validate configuration from config.json and control.json."""
+
+    runtime = load_runtime_config()
+
+    if runtime.mm_control_base_dir:
+        os.environ["MM_CONTROL_BASE_DIR"] = runtime.mm_control_base_dir
 
     # IBKR Connection
-    ibkr_host = os.getenv("IBKR_GATEWAY_HOST", "127.0.0.1")
+    ibkr_host = runtime.ibkr_gateway_host
 
     # Paper trading connection
-    try:
-        paper_port = int(os.getenv("PAPER_GATEWAY_PORT", "4002"))
-    except ValueError:
-        raise InvalidConfigError("PAPER_GATEWAY_PORT must be an integer")
-
-    try:
-        paper_client_id = int(os.getenv("PAPER_CLIENT_ID", "1"))
-    except ValueError:
-        raise InvalidConfigError("PAPER_CLIENT_ID must be an integer")
+    paper_port = runtime.paper_gateway_port
+    paper_client_id = runtime.paper_client_id
 
     # Live trading connection
-    try:
-        live_port = int(os.getenv("LIVE_GATEWAY_PORT", "4001"))
-    except ValueError:
-        raise InvalidConfigError("LIVE_GATEWAY_PORT must be an integer")
+    live_port = runtime.live_gateway_port
+    live_client_id = runtime.live_client_id
 
+    # Load trading controls from mm-control's control.json (preferred)
+    # Falls back to environment variables if mm-control not installed
     try:
-        live_client_id = int(os.getenv("LIVE_CLIENT_ID", "777"))
-    except ValueError:
-        raise InvalidConfigError("LIVE_CLIENT_ID must be an integer")
+        from mm_control.control_state import load_control as _load_control_state
 
-    # Trading Mode
-    trading_mode = os.getenv("TRADING_MODE", "paper").lower()
-    orders_enabled_str = os.getenv("ORDERS_ENABLED", "false").lower()
-    orders_enabled = orders_enabled_str in ("true", "yes", "1")
+        control_state = _load_control_state()
+        trading_mode = control_state.trading_mode
+        orders_enabled = control_state.orders_enabled
+        live_trading_override_file = control_state.live_trading_override_file
+        logger.debug(
+            "Loaded trading controls from control.json: "
+            f"mode={trading_mode}, orders={orders_enabled}"
+        )
+    except ImportError:
+        # Fallback to environment variables (legacy)
+        trading_mode = os.getenv("TRADING_MODE", "paper").lower()
+        orders_enabled_str = os.getenv("ORDERS_ENABLED", "false").lower()
+        orders_enabled = orders_enabled_str in ("true", "yes", "1")
+        live_trading_override_file = os.getenv("LIVE_TRADING_OVERRIDE_FILE")
+        logger.debug(
+            "mm-control not available, using environment variables for trading controls"
+        )
 
     # API Server
-    try:
-        api_port = int(os.getenv("API_PORT", "8000"))
-    except ValueError:
-        raise InvalidConfigError("API_PORT must be an integer")
+    api_port = runtime.api_port
+    api_bind_host = runtime.api_bind_host
+    api_request_timeout = runtime.api_request_timeout
+    allowed_ips = runtime.allowed_ips
 
-    # API bind host (for LAN access)
-    api_bind_host = os.getenv("API_BIND_HOST", "127.0.0.1")
-
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = runtime.log_level
+    log_format = runtime.log_format
 
     # Path settings
-    data_storage_dir = os.getenv("DATA_STORAGE_DIR")
-    log_dir = os.getenv("LOG_DIR")
+    data_storage_dir = runtime.data_storage_dir
+    log_dir = runtime.log_dir
+    audit_db_path = runtime.audit_db_path
+    watchdog_log_dir = runtime.watchdog_log_dir
+    ibkr_gateway_path = runtime.ibkr_gateway_path
 
-    # Live Trading Override
-    live_trading_override_file = os.getenv("LIVE_TRADING_OVERRIDE_FILE")
+    run_window_start = runtime.run_window_start
+    run_window_end = runtime.run_window_end
+    run_window_days = runtime.run_window_days
+    run_window_timezone = runtime.run_window_timezone
+
+    mm_control_base_dir = runtime.mm_control_base_dir
+    mm_control_enable_background_monitor = runtime.mm_control_enable_background_monitor
+    mm_control_ttl_check_interval = runtime.mm_control_ttl_check_interval
+
+    admin_restart_enabled = runtime.admin_restart_enabled
+
+    # Note: live_trading_override_file is now loaded from control.json above
 
     config = Config(
         ibkr_gateway_host=ibkr_host,
@@ -160,9 +211,23 @@ def load_config() -> Config:
         orders_enabled=orders_enabled,
         api_port=api_port,
         api_bind_host=api_bind_host,
+        api_request_timeout=api_request_timeout,
+        allowed_ips=allowed_ips,
         log_level=log_level,
+        log_format=log_format,
         data_storage_dir=data_storage_dir,
         log_dir=log_dir,
+        audit_db_path=audit_db_path,
+        watchdog_log_dir=watchdog_log_dir,
+        ibkr_gateway_path=ibkr_gateway_path,
+        run_window_start=run_window_start,
+        run_window_end=run_window_end,
+        run_window_days=run_window_days,
+        run_window_timezone=run_window_timezone,
+        mm_control_base_dir=mm_control_base_dir,
+        mm_control_enable_background_monitor=mm_control_enable_background_monitor,
+        mm_control_ttl_check_interval=mm_control_ttl_check_interval,
+        admin_restart_enabled=admin_restart_enabled,
         live_trading_override_file=live_trading_override_file,
     )
 

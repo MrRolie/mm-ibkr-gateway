@@ -15,9 +15,9 @@ Querying Claude for Available Tools
 
 This system is **SAFE BY DEFAULT**:
 
-✅ **Paper trading mode**: System defaults to paper trading (`TRADING_MODE=paper`)
-✅ **Orders disabled**: Order placement is disabled by default (`ORDERS_ENABLED=false`)
-✅ **Dual-toggle protection**: Live trading requires BOTH flags AND confirmation file
+✅ **Paper trading mode**: System defaults to paper trading (`trading_mode=paper` in `control.json`)
+✅ **Orders disabled**: Order placement is disabled by default (`orders_enabled=false` in `control.json`)
+✅ **Dual-toggle protection**: Live trading requires `trading_mode=live`, `orders_enabled=true`, and an override file in `control.json`
 ✅ **Preview before place**: MCP tools require explicit confirmation for all orders
 
 ### Default Behavior
@@ -31,10 +31,12 @@ This system is **SAFE BY DEFAULT**:
 
 We **strongly recommend** staying in paper mode. If you must enable live trading:
 
-1. Set `TRADING_MODE=live` in `.env`
-2. Set `ORDERS_ENABLED=true` in `.env`
-3. Create confirmation file: `touch ~/ibkr_live_trading_confirmed.txt`
-4. Set `LIVE_TRADING_OVERRIDE_FILE=~/ibkr_live_trading_confirmed.txt` in `.env`
+1. Create an override file: `New-Item -Path "C:\ProgramData\mm-control\live_override.txt" -ItemType File`
+2. Update `control.json` via mm-control:
+   ```powershell
+   cd C:\Users\mikae\Coding Projects\mm-control\scripts
+   .\set-control.ps1 -TradingMode live -OrdersEnabled $true -DryRun $false -OverrideFile "C:\ProgramData\mm-control\live_override.txt"
+   ```
 
 **WARNING**: Once enabled, the system can place REAL orders with REAL money.
 
@@ -58,10 +60,10 @@ Want to see the system in action? Run our interactive demo to explore market dat
 ### Run the Demo
 
 ```bash
-# 1. Copy environment file
+# 1. (Optional) copy secrets template
 cp .env.example .env
 
-# 2. Ensure TRADING_MODE=paper in .env (default)
+# 2. Ensure control.json is in paper mode (default)
 
 # 3. Install dependencies
 poetry install
@@ -99,7 +101,7 @@ docker-compose -f docker-compose.demo.yml up
 | Issue | Solution |
 |-------|----------|
 | "IBKR Gateway not detected" | Ensure TWS/Gateway is running on port 4002 |
-| "Demo requires TRADING_MODE=paper" | Set `TRADING_MODE=paper` in your `.env` file |
+| "Demo requires paper trading mode" | Ensure `control.json` has `trading_mode=paper` (default) |
 | "Market data permission error" | Paper accounts have free delayed data; check IBKR subscriptions |
 | Connection timeout | Verify IBKR Gateway API settings are enabled (Configure → API → Settings) |
 
@@ -386,32 +388,34 @@ pip install -e .
 
 ### Configuration
 
-1. Copy the example environment file:
+1. Create runtime config (`config.json`). For Windows deployments, run `deploy/windows/configure.ps1` or create
+   `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_CONFIG_PATH`).
 
-   ```bash
-   cp .env.example .env
+   Example (trimmed):
+
+   ```json
+   {
+     "api_bind_host": "127.0.0.1",
+     "api_port": 8000,
+     "allowed_ips": "127.0.0.1",
+     "ibkr_gateway_host": "127.0.0.1",
+     "paper_gateway_port": 4002,
+     "live_gateway_port": 4001,
+     "data_storage_dir": "C:\\\\ProgramData\\\\mm-ibkr-gateway\\\\storage",
+     "ibkr_gateway_path": "C:\\\\Jts\\\\ibgateway\\\\1042"
+   }
    ```
 
-2. Edit `.env` for your setup:
+2. Trading controls live in `C:\ProgramData\mm-control\control.json` (use `mm-control` or `set-control.ps1`).
+
+3. (Optional) create `.env` for secrets:
 
    ```ini
-   # IBKR Gateway Connection
-   IBKR_GATEWAY_HOST=127.0.0.1
-   PAPER_GATEWAY_PORT=4002
-   PAPER_CLIENT_ID=1
-   LIVE_GATEWAY_PORT=4001
-   LIVE_CLIENT_ID=777
-
-   # Safety Settings
-   TRADING_MODE=paper          # paper or live
-   ORDERS_ENABLED=false        # set to true to enable real orders
-
-   # API Settings (optional)
-   API_KEY=                    # set to require X-API-Key header
-   API_PORT=8000
+   API_KEY=
+   ADMIN_TOKEN=
    ```
 
-3. Verify connection:
+4. Verify connection:
 
    ```bash
    python -m ibkr_core.healthcheck
@@ -662,24 +666,20 @@ Integration tests run manually due to IBKR connection requirements.
 
 ---
 
-## Environment Variables
+## Runtime Configuration
+
+Operational settings load from `config.json` (ProgramData on Windows, override with `MM_IBKR_CONFIG_PATH`).
+Trading controls load from `control.json` (mm-control).
+
+### Environment Variables (Secrets and Tooling)
 
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
-| `IBKR_GATEWAY_HOST` | `127.0.0.1` | IBKR Gateway hostname |
-| `PAPER_GATEWAY_PORT` | `4002` | Paper trading port |
-| `PAPER_CLIENT_ID` | `1` | Paper trading client ID |
-| `LIVE_GATEWAY_PORT` | `4001` | Live trading port |
-| `LIVE_CLIENT_ID` | `777` | Live trading client ID |
-| `TRADING_MODE` | `paper` | `paper` or `live` |
-| `ORDERS_ENABLED` | `false` | Enable order placement |
 | `API_KEY` | (none) | API key for REST authentication |
-| `API_PORT` | `8000` | FastAPI server port |
+| `ADMIN_TOKEN` | (none) | Admin token for `/admin/*` endpoints |
+| `MM_IBKR_CONFIG_PATH` | (none) | Override path to `config.json` |
 | `IBKR_API_URL` | `http://localhost:8000` | REST API URL (for MCP server) |
 | `MCP_REQUEST_TIMEOUT` | `60` | MCP request timeout in seconds |
-| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `LOG_FORMAT` | `json` | Log format (`json` or `text`) |
-| `AUDIT_DB_PATH` | `./data/audit.db` | SQLite audit database path |
 | `IBKR_MODE` | (none) | Override to `simulation` for testing without gateway |
 
 ---

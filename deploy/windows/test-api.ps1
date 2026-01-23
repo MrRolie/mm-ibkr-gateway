@@ -24,9 +24,16 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 # Load environment
 Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
+# Load config.json
+$config = Import-GatewayConfig
+$runWindowStart = Get-GatewayConfigValue $config "run_window_start" "04:00"
+$runWindowEnd = Get-GatewayConfigValue $config "run_window_end" "20:00"
+$runWindowDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,Thu,Fri"
+$runWindowTimezone = Get-GatewayConfigValue $config "run_window_timezone" "America/Toronto"
+
 # For local testing, always use localhost to avoid firewall/binding issues
 $apiHost = "127.0.0.1"
-$apiPort = if ($env:API_PORT) { $env:API_PORT } else { 8000 }
+$apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
 $apiKey  = $env:API_KEY
 $url     = "http://${apiHost}:${apiPort}/account/summary"
 
@@ -83,18 +90,18 @@ try {
     # Check if this is a window restriction error
     if ($errorBody -like "*outside run window*" -or $errorBody -like "*Service unavailable*") {
         Write-Host "`nAPI is outside run window." -ForegroundColor Yellow
-        Write-Host "Run Window: $($env:RUN_WINDOW_START) - $($env:RUN_WINDOW_END) ($($env:RUN_WINDOW_DAYS))" -ForegroundColor Gray
-        Write-Host "Timezone: $($env:RUN_WINDOW_TIMEZONE)" -ForegroundColor Gray
+        Write-Host "Run Window: $runWindowStart - $runWindowEnd ($runWindowDays)" -ForegroundColor Gray
+        Write-Host "Timezone: $runWindowTimezone" -ForegroundColor Gray
         Write-Host "Current Time: $(Get-Date -Format 'HH:mm zzz')" -ForegroundColor Gray
         Write-Host "`nThis is expected behavior. The API enforces time windows internally." -ForegroundColor Cyan
-        Write-Host "To test during off-hours, temporarily adjust RUN_WINDOW_* in .env and restart the service." -ForegroundColor Cyan
+        Write-Host "To test during off-hours, update run_window_* in config.json and restart the service." -ForegroundColor Cyan
         exit 0  # Exit successfully - this is expected behavior
     }
     
     # Handle specific status codes
     if ($statusCode -eq 503) {
         Write-Host "`nAPI is outside run window." -ForegroundColor Yellow
-        Write-Host "Run Window: $($env:RUN_WINDOW_START) - $($env:RUN_WINDOW_END) ($($env:RUN_WINDOW_DAYS))" -ForegroundColor Gray
+        Write-Host "Run Window: $runWindowStart - $runWindowEnd ($runWindowDays)" -ForegroundColor Gray
         Write-Host "Current Time: $(Get-Date -Format 'HH:mm')" -ForegroundColor Gray
         Write-Host "`nThis is expected behavior." -ForegroundColor Cyan
         exit 0

@@ -251,10 +251,10 @@ def demo(
 
 @app.command(name="start-api")
 def start_api(
-    port: int = typer.Option(8000, "--port", "-p", help="API server port"),
+    port: int | None = typer.Option(None, "--port", "-p", help="API server port"),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
     host: str = typer.Option(
-        None, "--host", help="Bind host (default: from API_BIND_HOST env or 127.0.0.1)"
+        None, "--host", help="Bind host (default: from config.json)"
     ),
 ):
     """
@@ -271,11 +271,12 @@ def start_api(
     The server will be available at http://localhost:8000 (or your specified port).
     API documentation is available at http://localhost:8000/docs
     """
-    import os
+    config = get_config()
 
-    # Use API_BIND_HOST from env if host not specified
     if host is None:
-        host = os.getenv("API_BIND_HOST", "127.0.0.1")
+        host = config.api_bind_host
+    if port is None:
+        port = config.api_port
 
     console.print("\n[bold cyan]Starting IBKR Gateway API Server[/bold cyan]\n")
 

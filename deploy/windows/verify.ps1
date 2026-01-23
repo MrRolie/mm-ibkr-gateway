@@ -28,6 +28,28 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 # Load environment
 Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
+$config = Import-GatewayConfig
+$configPath = Get-GatewayConfigPath
+$dataStorageDir = Get-GatewayConfigValue $config "data_storage_dir" $null
+$logDir = Get-GatewayConfigValue $config "log_dir" $null
+$gatewayPath = Get-GatewayConfigValue $config "ibkr_gateway_path" $null
+$apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
+$apiHost = Get-GatewayConfigValue $config "api_bind_host" "127.0.0.1"
+$paperPort = [int](Get-GatewayConfigValue $config "paper_gateway_port" 4002)
+$livePort = [int](Get-GatewayConfigValue $config "live_gateway_port" 4001)
+$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlFile = Join-Path $controlBaseDir "control.json"
+$tradingMode = "paper"
+if (Test-Path $controlFile) {
+    try {
+        $controlState = Get-Content -Path $controlFile -Raw | ConvertFrom-Json
+        if ($controlState.trading_mode) { $tradingMode = $controlState.trading_mode }
+    } catch {
+        $tradingMode = "paper"
+    }
+}
+$gatewayPort = if ($tradingMode -eq "live") { $livePort } else { $paperPort }
+
 $passCount = 0
 $warnCount = 0
 $failCount = 0
@@ -78,22 +100,30 @@ Write-Host ""
 # ============================================================================
 Write-Host "CONFIGURATION" -ForegroundColor White
 
-# .env file
+# config.json
+if ($config) {
+    Write-Check "config.json exists" "PASS" $configPath
+} else {
+    Write-Check "config.json exists" "FAIL" "Run configure.ps1 (expected at $configPath)"
+}
+
+# .env file (secrets)
 $envFile = Join-Path $RepoRoot ".env"
 if (Test-Path $envFile) {
     Write-Check ".env file exists" "PASS"
 } else {
-    Write-Check ".env file exists" "FAIL" "Run configure.ps1"
+    Write-Check ".env file exists" "WARN" "Create .env for API_KEY/ADMIN_TOKEN secrets"
 }
 
-# Required variables
-$requiredVars = @("API_BIND_HOST", "API_PORT", "DATA_STORAGE_DIR", "IBKR_GATEWAY_PATH")
-foreach ($var in $requiredVars) {
-    $value = [Environment]::GetEnvironmentVariable($var)
+# Required config keys
+$requiredConfigKeys = @("api_bind_host", "api_port", "data_storage_dir", "ibkr_gateway_path")
+foreach ($key in $requiredConfigKeys) {
+    $value = Get-GatewayConfigValue $config $key $null
     if ($value) {
-        Write-Check "$var configured" "PASS" $value.Substring(0, [Math]::Min(30, $value.Length))
+        $display = $value.ToString()
+        Write-Check "$key configured" "PASS" $display.Substring(0, [Math]::Min(30, $display.Length))
     } else {
-        Write-Check "$var configured" "FAIL" "Not set"
+        Write-Check "$key configured" "FAIL" "Missing in config.json"
     }
 }
 
@@ -112,23 +142,23 @@ Write-Host ""
 Write-Host "DIRECTORIES" -ForegroundColor White
 
 # Storage path
-if ($env:DATA_STORAGE_DIR) {
-    if (Test-Path $env:DATA_STORAGE_DIR) {
-        Write-Check "Storage path accessible" "PASS" $env:DATA_STORAGE_DIR
+if ($dataStorageDir) {
+    if (Test-Path $dataStorageDir) {
+        Write-Check "Storage path accessible" "PASS" $dataStorageDir
     } else {
-        Write-Check "Storage path accessible" "FAIL" "Path not found: $env:DATA_STORAGE_DIR"
+        Write-Check "Storage path accessible" "FAIL" "Path not found: $dataStorageDir"
     }
 }
 
 # Log directory
-if ($env:LOG_DIR) {
-    if (Test-Path $env:LOG_DIR) {
-        Write-Check "Log directory exists" "PASS" $env:LOG_DIR
+if ($logDir) {
+    if (Test-Path $logDir) {
+        Write-Check "Log directory exists" "PASS" $logDir
     } else {
         Write-Check "Log directory exists" "WARN" "Will be created on first run"
     }
 } else {
-    Write-Check "Log directory configured" "WARN" "LOG_DIR not set; default created on first run" 
+    Write-Check "Log directory configured" "WARN" "log_dir not set; default created on first run"
 }
 
 # Secrets directory
@@ -150,8 +180,8 @@ if (Test-Path $stateDir) {
 Write-Host ""
 
 # VENV CHECK
-if ($env:DATA_STORAGE_DIR) {
-    $venvPython = Join-Path $env:DATA_STORAGE_DIR "venv\Scripts\python.exe"
+if ($dataStorageDir) {
+    $venvPython = Join-Path $dataStorageDir "venv\Scripts\python.exe"
     if (Test-Path $venvPython) {
         Write-Check "Python venv present" "PASS" $venvPython
     } else {
@@ -165,12 +195,12 @@ if ($env:DATA_STORAGE_DIR) {
 Write-Host "IBKR GATEWAY" -ForegroundColor White
 
 # Gateway installation
-if ($env:IBKR_GATEWAY_PATH) {
-    if (Test-Path $env:IBKR_GATEWAY_PATH) {
-        Write-Check "Gateway installation found" "PASS" $env:IBKR_GATEWAY_PATH
+if ($gatewayPath) {
+    if (Test-Path $gatewayPath) {
+        Write-Check "Gateway installation found" "PASS" $gatewayPath
         
         # Check for ibgateway.exe
-        $exePath = Get-ChildItem -Path $env:IBKR_GATEWAY_PATH -Recurse -Filter "ibgateway.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $exePath = Get-ChildItem -Path $gatewayPath -Recurse -Filter "ibgateway.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($exePath) {
             Write-Check "ibgateway.exe found" "PASS"
         } else {
@@ -180,7 +210,7 @@ if ($env:IBKR_GATEWAY_PATH) {
         Write-Check "Gateway installation found" "FAIL" "Path not found"
     }
 } else {
-    Write-Check "Gateway installation found" "FAIL" "IBKR_GATEWAY_PATH not set"
+    Write-Check "Gateway installation found" "FAIL" "ibkr_gateway_path not set"
 }
 
 # jts.ini
@@ -278,7 +308,6 @@ if ($gatewayProcess) {
 }
 
 # Gateway port
-$gatewayPort = if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
 $gatewayListening = Get-NetTCPConnection -LocalPort $gatewayPort -State Listen -ErrorAction SilentlyContinue
 if ($gatewayListening) {
     Write-Check "Gateway port $gatewayPort listening" "PASS"
@@ -291,13 +320,11 @@ if ($gatewayListening) {
 }
 
 # API port
-$apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
 $apiListening = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue
 if ($apiListening) {
     Write-Check "API port $apiPort listening" "PASS"
     
     # Health check
-    $apiHost = if ($env:API_BIND_HOST) { $env:API_BIND_HOST } else { "127.0.0.1" }
     try {
         $healthUrl = "http://${apiHost}:${apiPort}/health"
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5 -ErrorAction Stop

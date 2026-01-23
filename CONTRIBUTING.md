@@ -24,10 +24,13 @@ Thank you for your interest in contributing! This document provides guidelines f
    poetry install
    ```
 
-3. **Configure environment**:
+3. **Configure runtime settings**:
    ```bash
+   # Optional: secrets (API_KEY/ADMIN_TOKEN)
    cp .env.example .env
-   # Edit .env with your settings (use paper mode!)
+
+   # Create config.json (operational settings)
+   # See deploy/windows/README.md for the full list of keys
    ```
 
 4. **Run tests**:

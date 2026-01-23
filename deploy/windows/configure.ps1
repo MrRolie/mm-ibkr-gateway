@@ -3,8 +3,8 @@
     Interactive configuration script for mm-ibkr-gateway Windows deployment.
 
 .DESCRIPTION
-    Collects required settings and generates .env file for the execution node.
-    Creates directory structure for logs and the audit database.
+    Collects required settings and generates config.json for the execution node.
+    Creates directory structure for logs and the audit database, and a minimal .env for secrets.
 
 .PARAMETER NonInteractive
     Skip prompts and use environment variables or defaults.
@@ -25,6 +25,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 $EnvFile = Join-Path $RepoRoot ".env"
 $SecretsDir = Join-Path $RepoRoot "secrets"
+$ConfigFile = if ($env:MM_IBKR_CONFIG_PATH) { $env:MM_IBKR_CONFIG_PATH } else { "C:\ProgramData\mm-ibkr-gateway\config.json" }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "  mm-ibkr-gateway Configuration Wizard" -ForegroundColor Cyan
@@ -130,11 +131,29 @@ if ($detectedGateway) {
     Write-Host "Detected IBKR Gateway: $detectedGateway"
 }
 $GatewayPath = Read-HostWithDefault -Prompt "IBKR Gateway installation path" -Default $detectedGateway -Required
+$IbkrGatewayHost = Read-HostWithDefault -Prompt "IBKR Gateway host (usually 127.0.0.1)" -Default "127.0.0.1"
 $PaperPort = Read-HostWithDefault -Prompt "Paper trading port" -Default "4002"
 Write-Host ""
+Write-Host "Client ID guidance:" -ForegroundColor Gray
+Write-Host "  - The long-lived gateway service should use the master client ID." -ForegroundColor Gray
+Write-Host "  - If another direct client is the master, pick a different ID here." -ForegroundColor Gray
+$PaperClientId = Read-HostWithDefault -Prompt "Paper client ID (master if gateway is master)" -Default "1"
+$LiveGatewayPort = Read-HostWithDefault -Prompt "Live trading port" -Default "4001"
+$LiveClientId = Read-HostWithDefault -Prompt "Live client ID (master if gateway is master)" -Default "777"
+Write-Host ""
 
-# Step 5: IBKR Credentials
-Write-Host "Step 5: IBKR Credentials" -ForegroundColor Yellow
+# Step 5: API + Logging Configuration
+Write-Host "Step 5: API + Logging Configuration" -ForegroundColor Yellow
+$ApiRequestTimeout = Read-HostWithDefault -Prompt "API request timeout (seconds)" -Default "30.0"
+$LogLevel = (Read-HostWithDefault -Prompt "Log level (DEBUG, INFO, WARNING, ERROR)" -Default "INFO").ToUpper()
+$LogFormat = (Read-HostWithDefault -Prompt "Log format (json or text)" -Default "json").ToLower()
+$WatchdogLogDir = Read-HostWithDefault -Prompt "Watchdog log directory" -Default "C:\ProgramData\mm-ibkr-gateway\logs"
+$enableAdminRestart = Read-HostWithDefault -Prompt "Enable /admin/restart endpoint? (y/N)" -Default "N"
+$AdminRestartEnabled = if ($enableAdminRestart -eq "y" -or $enableAdminRestart -eq "Y") { $true } else { $false }
+Write-Host ""
+
+# Step 6: IBKR Credentials
+Write-Host "Step 6: IBKR Credentials" -ForegroundColor Yellow
 Write-Host "These credentials are for IBKR Gateway auto-login (paper trading)." -ForegroundColor Gray
 Write-Host "WARNING: Credentials will be stored in jts.ini (plaintext - IBKR limitation)" -ForegroundColor Yellow
 Write-Host ""
@@ -150,8 +169,8 @@ if ($configureCredentials -eq "Y" -or $configureCredentials -eq "y") {
 }
 Write-Host ""
 
-# Step 6: Time Window Configuration
-Write-Host "Step 6: Time Window Configuration" -ForegroundColor Yellow
+# Step 7: Time Window Configuration
+Write-Host "Step 7: Time Window Configuration" -ForegroundColor Yellow
 Write-Host "Services will only run during this window on specified days."
 $RunWindowStart = Read-HostWithDefault -Prompt "Start time (HH:MM, 24-hour)" -Default "04:00"
 $RunWindowEnd = Read-HostWithDefault -Prompt "End time (HH:MM, 24-hour)" -Default "20:00"
@@ -159,8 +178,8 @@ $RunWindowDays = Read-HostWithDefault -Prompt "Active days (comma-separated)" -D
 $RunWindowTimezone = Read-HostWithDefault -Prompt "Timezone" -Default "America/Toronto"
 Write-Host ""
 
-# Step 7: mm-control Configuration
-Write-Host "Step 7: mm-control Integration" -ForegroundColor Yellow
+# Step 8: mm-control Configuration
+Write-Host "Step 8: mm-control Integration" -ForegroundColor Yellow
 Write-Host "mm-control provides centralized trading control (guard file + toggle store)." -ForegroundColor Gray
 Write-Host "Default location: C:\ProgramData\mm-control" -ForegroundColor Gray
 $defaultMMControlBase = "C:\ProgramData\mm-control"
@@ -175,12 +194,11 @@ $MMControlEnableMonitor = if ($enableMonitor -eq "Y" -or $enableMonitor -eq "y")
 $MMControlCheckInterval = Read-HostWithDefault -Prompt "TTL check interval (seconds)" -Default "30"
 Write-Host ""
 
-# Step 8: Safety Confirmation
-Write-Host "Step 8: Safety Settings" -ForegroundColor Yellow
-Write-Host "SAFETY: Orders are DISABLED by default. Paper trading mode only." -ForegroundColor Green
-Write-Host "To enable orders later, set ORDERS_ENABLED=true and create the arm file."
-$TradingMode = "paper"
-$OrdersEnabled = "false"
+# Step 9: Safety Confirmation
+Write-Host "Step 9: Safety Settings" -ForegroundColor Yellow
+Write-Host "SAFETY: Trading controls are managed via control.json (centralized)" -ForegroundColor Green
+Write-Host "Default: Paper mode, orders DISABLED, dry-run enabled." -ForegroundColor Green
+Write-Host "Use mm-control CLI or set-control.ps1 to change trading settings." -ForegroundColor Gray
 Write-Host ""
 
 # Create directories
@@ -453,111 +471,100 @@ if (-not (Test-Path $StateDir)) {
     Write-Host "  Created: $StateDir"
 }
 
-# Generate .env file
+# Check control.json created by mm-control
+Write-Host "`nChecking control.json..." -ForegroundColor Cyan
+$ControlDir = $MMControlBaseDir
+$ControlFile = Join-Path $ControlDir "control.json"
+if (-not (Test-Path $ControlFile)) {
+    Write-Host "  Missing: $ControlFile" -ForegroundColor Yellow
+    Write-Host "  Run mm-control\\scripts\\set-control.ps1 to create and configure." -ForegroundColor Yellow
+} else {
+    Write-Host "  Found: $ControlFile" -ForegroundColor Gray
+    try {
+        $control = Get-Content -Path $ControlFile -Raw | ConvertFrom-Json
+        Write-Host "  trading_mode:   $($control.trading_mode)"
+        Write-Host "  orders_enabled: $($control.orders_enabled)"
+        Write-Host "  dry_run:        $($control.dry_run)"
+        Write-Host "  override_file:  $($control.live_trading_override_file)"
+    } catch {
+        Write-Host "  Warning: Failed to read control.json: $_" -ForegroundColor Yellow
+    }
+}
+
+# Generate config.json
+Write-Host "`nGenerating config.json..." -ForegroundColor Cyan
+
+$configDir = Split-Path -Parent $ConfigFile
+if (-not (Test-Path $configDir)) {
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+    Write-Host "  Created: $configDir" -ForegroundColor Gray
+}
+
+$configData = @{
+    schema_version = 1
+    api_bind_host = $LanIP
+    api_port = [int]$ApiPort
+    allowed_ips = $AllowedIPs
+    api_request_timeout = [double]$ApiRequestTimeout
+    ibkr_gateway_host = $IbkrGatewayHost
+    paper_gateway_port = [int]$PaperPort
+    paper_client_id = [int]$PaperClientId
+    live_gateway_port = [int]$LiveGatewayPort
+    live_client_id = [int]$LiveClientId
+    ibkr_gateway_path = $GatewayPath
+    log_level = $LogLevel
+    log_format = $LogFormat
+    data_storage_dir = $StorageBasePath
+    log_dir = $LogDir
+    audit_db_path = $AuditDbPath
+    watchdog_log_dir = $WatchdogLogDir
+    mm_control_base_dir = $MMControlBaseDir
+    mm_control_enable_background_monitor = ($MMControlEnableMonitor -eq "true")
+    mm_control_ttl_check_interval = [int]$MMControlCheckInterval
+    run_window_start = $RunWindowStart
+    run_window_end = $RunWindowEnd
+    run_window_days = $RunWindowDays
+    run_window_timezone = $RunWindowTimezone
+    admin_restart_enabled = $AdminRestartEnabled
+}
+
+if (Test-Path $ConfigFile) {
+    $backupPath = "$ConfigFile.backup.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+    Copy-Item $ConfigFile $backupPath
+    Write-Host "  Backed up existing config.json to: $backupPath" -ForegroundColor Gray
+}
+
+$tempConfig = "$ConfigFile.tmp.$([guid]::NewGuid().ToString())"
+try {
+    $configJson = $configData | ConvertTo-Json -Depth 5
+    Set-Content -Path $tempConfig -Value $configJson -Encoding UTF8 -ErrorAction Stop
+    Move-Item -Path $tempConfig -Destination $ConfigFile -Force -ErrorAction Stop
+    Write-Host "  Created: $ConfigFile" -ForegroundColor Green
+} catch {
+    Write-Host "  ERROR: Failed to write config.json: $_" -ForegroundColor Red
+    Remove-Item -Path $tempConfig -ErrorAction SilentlyContinue
+}
+
+# Generate minimal .env file for secrets
 Write-Host "`nGenerating .env file..." -ForegroundColor Cyan
 
 $envContent = @"
 # =============================================================================
-# mm-ibkr-gateway Configuration
+# mm-ibkr-gateway Secrets (.env)
 # Generated by configure.ps1 on $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 # =============================================================================
-
+#
+# Operational settings live in config.json:
+#   $ConfigFile
+#
 # =============================================================================
-# SAFETY SETTINGS (DO NOT CHANGE UNLESS YOU UNDERSTAND THE IMPLICATIONS)
+# API AUTHENTICATION
 # =============================================================================
-
-# Trading mode: paper = simulated, live = REAL MONEY
-TRADING_MODE=$TradingMode
-
-# Order placement: false = disabled, true = ENABLED
-ORDERS_ENABLED=$OrdersEnabled
-
-# Live trading override (required for live trading with orders enabled)
-LIVE_TRADING_OVERRIDE_FILE=
-
-# =============================================================================
-# NETWORK SETTINGS
-# =============================================================================
-
-# API server bind address (LAN IP for remote clients or localhost)
-API_BIND_HOST=$LanIP
-
-# API server port
-API_PORT=$ApiPort
-
-# Allowed remote IPs/CIDR for inbound connections
-ALLOWED_IPS=$AllowedIPs
-
-# =============================================================================
-# IBKR CONNECTION SETTINGS
-# =============================================================================
-
-# IBKR Gateway host (always localhost for local gateway)
-IBKR_GATEWAY_HOST=127.0.0.1
-
-# Paper Trading Connection
-PAPER_GATEWAY_PORT=$PaperPort
-PAPER_CLIENT_ID=1
-
-# Live Trading Connection (not used in this deployment)
-LIVE_GATEWAY_PORT=4001
-LIVE_CLIENT_ID=777
-
-# =============================================================================
-# TIME WINDOW SETTINGS (Development / Advanced)
-# =============================================================================
-
-# Services run only during this window
-RUN_WINDOW_START=$RunWindowStart
-RUN_WINDOW_END=$RunWindowEnd
-RUN_WINDOW_DAYS=$RunWindowDays
-RUN_WINDOW_TIMEZONE=$RunWindowTimezone
-
-# =============================================================================
-# PATH SETTINGS
-# =============================================================================
-
-# Base storage directory (ProgramData recommended for services)
-DATA_STORAGE_DIR=$StorageBasePath
-
-# Audit database (SQLite)
-AUDIT_DB_PATH=$AuditDbPath
-
-# Log directory
-LOG_DIR=$LogDir
-
-# IBKR Gateway installation path
-IBKR_GATEWAY_PATH=$GatewayPath
-
-# =============================================================================
-# MM-CONTROL SETTINGS
-# =============================================================================
-
-# mm-control base directory (guard file + toggles.json location)
-MM_CONTROL_BASE_DIR=$MMControlBaseDir
-
-# Enable background TTL monitor in API (auto-enables trading when TTL expires)
-MM_CONTROL_ENABLE_BACKGROUND_MONITOR=$MMControlEnableMonitor
-
-# TTL check interval in seconds
-MM_CONTROL_TTL_CHECK_INTERVAL=$MMControlCheckInterval
-
-# =============================================================================
-# LOGGING SETTINGS
-# =============================================================================
-
-LOG_LEVEL=INFO
-LOG_FORMAT=json
-
-# =============================================================================
-# API SETTINGS
-# =============================================================================
-
 # API key (generated by generate-api-key.ps1)
 # API_KEY=
-
-# Request timeout in seconds
-API_REQUEST_TIMEOUT=30.0
+#
+# Admin token for /admin/* endpoints (required for admin operations)
+# ADMIN_TOKEN=
 "@
 
 # Backup existing .env if present
@@ -616,8 +623,9 @@ Write-Host "  Repository:      $RepoRoot"
 Write-Host "  API Endpoint:    http://${LanIP}:${ApiPort}"
 Write-Host "  Allowed IPs:     $AllowedIPs"
 Write-Host "  Storage Path:    $StorageBasePath"
-Write-Host "  Trading Mode:    $TradingMode"
-Write-Host "  Orders Enabled:  $OrdersEnabled"
+Write-Host "  Config File:     $ConfigFile"
+Write-Host "  Secrets File:    $EnvFile"
+Write-Host "  Control File:    $ControlFile"
 Write-Host "  Run Window:      $RunWindowDays $RunWindowStart - $RunWindowEnd ($RunWindowTimezone)"
 
 Write-Host "`nNext Steps:" -ForegroundColor Yellow

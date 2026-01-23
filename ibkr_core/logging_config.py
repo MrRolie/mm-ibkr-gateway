@@ -120,38 +120,43 @@ class CorrelationIdTextFormatter(logging.Formatter):
 
 def get_log_level() -> int:
     """
-    Get log level from environment variable.
+    Get log level from runtime config.
 
     Supported values: DEBUG, INFO, WARNING, ERROR, CRITICAL
     Default: INFO
     """
-    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    from ibkr_core.config import get_config
+
+    level_name = get_config().log_level.upper()
     return getattr(logging, level_name, logging.INFO)
 
 
 def get_log_format() -> str:
     """
-    Get log format from environment variable.
+    Get log format from runtime config.
 
     Supported values: json, text
     Default: json
     """
-    return os.environ.get("LOG_FORMAT", "json").lower()
+    from ibkr_core.config import get_config
+
+    return get_config().log_format.lower()
 
 
 def get_log_file_path() -> Optional[Path]:
     """
-    Get log file path from environment.
+    Get log file path from runtime config.
 
     LOG_DIR specifies the directory where log files are stored.
     Returns the full path to ibkr-gateway.log in that directory.
     """
-    log_dir = os.environ.get("LOG_DIR")
+    from ibkr_core.config import get_config
+
+    log_dir = get_config().log_dir
     if not log_dir:
         return None
 
     path = Path(log_dir)
-    # Always treat LOG_DIR as a directory
     return path / "ibkr-gateway.log"
 
 
@@ -166,8 +171,8 @@ def configure_logging(
     This should be called once at application startup.
 
     Args:
-        level: Log level (defaults to LOG_LEVEL env var or INFO)
-        format_type: "json" or "text" (defaults to LOG_FORMAT env var or "json")
+        level: Log level (defaults to config.json or INFO)
+        format_type: "json" or "text" (defaults to config.json or "json")
         force_reconfigure: If True, reconfigure even if already configured
     """
     # Check if already configured

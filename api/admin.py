@@ -26,11 +26,14 @@ Usage:
 import logging
 import os
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
+
+from ibkr_core.config import reset_config
+from ibkr_core.runtime_config import CONFIG_KEYS, get_config_path, load_config_data, update_config_data
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +78,61 @@ class ToggleResponse(BaseModel):
 
 
 class AdminStatusResponse(BaseModel):
-    """Response from admin status endpoint."""
+    """Response from admin status endpoint.
 
-    trading_enabled: bool = Field(..., description="Whether trading is currently enabled")
-    guard_file_exists: bool = Field(..., description="Whether guard file exists")
-    toggle_store_enabled: bool = Field(..., description="Toggle store trading_enabled value")
-    disabled_at: Optional[str] = Field(None, description="When trading was disabled")
-    disabled_by: Optional[str] = Field(None, description="Who disabled trading")
-    disabled_reason: Optional[str] = Field(None, description="Reason for disabling")
-    expires_at: Optional[str] = Field(None, description="TTL expiry timestamp")
+    Includes both control.json values and legacy guard/toggle status for transition period.
+    """
+
+    # Primary control.json fields
+    trading_mode: str = Field(..., description="Trading mode from control.json: paper or live")
+    orders_enabled: bool = Field(..., description="Whether orders are enabled in control.json")
+    dry_run: bool = Field(..., description="Dry run setting from control.json")
+    effective_dry_run: bool = Field(..., description="Effective dry run (false for live+enabled)")
+    live_trading_override_file: Optional[str] = Field(None, description="Override file path")
+    override_file_exists: Optional[bool] = Field(None, description="Whether override file exists (for live+enabled)")
+    is_live_trading_enabled: bool = Field(..., description="True if live+enabled")
+    validation_errors: list[str] = Field(default_factory=list, description="Control validation errors")
+    control_path: str = Field(..., description="Path to control.json")
+
+    # Derived field for backwards compatibility
+    trading_enabled: bool = Field(..., description="Whether trading is currently enabled (orders_enabled)")
+
+    # Legacy fields (deprecated, for transition period)
+    guard_file_exists: Optional[bool] = Field(None, description="(Deprecated) Whether guard file exists")
+    toggle_store_enabled: Optional[bool] = Field(None, description="(Deprecated) Toggle store value")
+    disabled_at: Optional[str] = Field(None, description="When trading was disabled (from toggle store)")
+    disabled_by: Optional[str] = Field(None, description="Who disabled trading (from toggle store)")
+    disabled_reason: Optional[str] = Field(None, description="Reason for disabling (from toggle store)")
+    expires_at: Optional[str] = Field(None, description="TTL expiry timestamp (from toggle store)")
     time_until_expiry_seconds: Optional[float] = Field(None, description="Seconds until auto-revert")
+
+
+class RuntimeConfigResponse(BaseModel):
+    """Response with runtime config.json values."""
+
+    config_path: str = Field(..., description="Path to config.json")
+    config: Dict[str, Any] = Field(..., description="Runtime config.json values")
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Request to update runtime config.json values."""
+
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for the update")
+    updates: Dict[str, Any] = Field(..., description="Config fields to update")
+
+
+class ConfigUpdateResponse(BaseModel):
+    """Response from config update endpoint."""
+
+    success: bool = Field(..., description="Whether the update succeeded")
+    updated_keys: list[str] = Field(default_factory=list, description="Config keys updated")
+    restart_required: bool = Field(..., description="Whether a service restart is recommended")
+    restart_required_keys: list[str] = Field(
+        default_factory=list,
+        description="Keys that require restart to fully apply",
+    )
+    config: Dict[str, Any] = Field(..., description="Updated config.json values")
+    message: str = Field(..., description="Status message")
 
 
 def get_admin_token() -> Optional[str]:
@@ -338,13 +386,13 @@ async def get_admin_status() -> AdminStatusResponse:
     """
     Get detailed trading control status.
 
-    Returns both guard file and toggle store state for comprehensive view.
+    Returns control.json values and legacy guard/toggle status for transition period.
     """
     try:
         from mm_control import (
+            get_control_status,
             get_guard_path,
             get_toggle_status,
-            is_trading_disabled,
         )
     except ImportError as e:
         logger.error(f"mm-control import failed: {e}")
@@ -357,12 +405,27 @@ async def get_admin_status() -> AdminStatusResponse:
         )
 
     try:
+        # Get control.json status (primary)
+        control_status = get_control_status()
+
+        # Get legacy status for transition period
         guard_exists = get_guard_path().exists()
         toggle_status = get_toggle_status()
-        overall_disabled = is_trading_disabled()
 
         return AdminStatusResponse(
-            trading_enabled=not overall_disabled,
+            # Primary control.json fields
+            trading_mode=control_status["trading_mode"],
+            orders_enabled=control_status["orders_enabled"],
+            dry_run=control_status["dry_run"],
+            effective_dry_run=control_status["effective_dry_run"],
+            live_trading_override_file=control_status["live_trading_override_file"],
+            override_file_exists=control_status["override_file_exists"],
+            is_live_trading_enabled=control_status["is_live_trading_enabled"],
+            validation_errors=control_status["validation_errors"],
+            control_path=control_status["control_path"],
+            # Backwards compatibility
+            trading_enabled=control_status["orders_enabled"],
+            # Legacy fields
             guard_file_exists=guard_exists,
             toggle_store_enabled=toggle_status.get("trading_enabled", True),
             disabled_at=toggle_status.get("disabled_at"),
@@ -382,6 +445,101 @@ async def get_admin_status() -> AdminStatusResponse:
             },
         )
 
+
+@router.get(
+    "/config",
+    response_model=RuntimeConfigResponse,
+    summary="Get runtime config.json",
+    description="Retrieve the current ProgramData config.json values.",
+)
+async def get_runtime_config() -> RuntimeConfigResponse:
+    config_path = get_config_path()
+    config_data = load_config_data(create_if_missing=True)
+    return RuntimeConfigResponse(config_path=str(config_path), config=config_data)
+
+
+@router.put(
+    "/config",
+    response_model=ConfigUpdateResponse,
+    summary="Update runtime config.json",
+    description="Update runtime configuration values stored in ProgramData config.json.",
+)
+async def update_runtime_config_endpoint(
+    request: Request,
+    body: ConfigUpdateRequest,
+) -> ConfigUpdateResponse:
+    invalid_keys = [
+        key for key in body.updates.keys()
+        if key not in CONFIG_KEYS or key == "schema_version"
+    ]
+    if invalid_keys:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_CONFIG_KEYS",
+                "message": f"Unsupported config keys: {', '.join(sorted(invalid_keys))}",
+            },
+        )
+
+    if not body.updates:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "EMPTY_UPDATE",
+                "message": "No config updates provided.",
+            },
+        )
+
+    updated_config = update_config_data(body.updates)
+    reset_config()
+
+    restart_sensitive_keys = {
+        "api_bind_host",
+        "api_port",
+        "ibkr_gateway_host",
+        "paper_gateway_port",
+        "paper_client_id",
+        "live_gateway_port",
+        "live_client_id",
+        "ibkr_gateway_path",
+        "data_storage_dir",
+        "log_dir",
+        "log_format",
+        "log_level",
+    }
+    updated_keys = sorted(body.updates.keys())
+    restart_required_keys = sorted(set(updated_keys).intersection(restart_sensitive_keys))
+    restart_required = len(restart_required_keys) > 0
+
+    # Log to mm-control audit trail if available
+    try:
+        from mm_control import write_audit_entry
+
+        write_audit_entry(
+            action="CONFIG_UPDATED",
+            reason=f"Admin API: {body.reason}",
+            details={
+                "updated_keys": updated_keys,
+                "client": request.client.host if request.client else "unknown",
+            },
+        )
+    except ImportError:
+        logger.warning("mm-control not available, skipping audit log for config update")
+    except Exception as exc:
+        logger.warning("Failed to write config update audit entry: %s", exc)
+
+    message = "Config updated successfully."
+    if restart_required:
+        message = "Config updated. Restart services to apply changes."
+
+    return ConfigUpdateResponse(
+        success=True,
+        updated_keys=updated_keys,
+        restart_required=restart_required,
+        restart_required_keys=restart_required_keys,
+        config=updated_config,
+        message=message,
+    )
 
 class AuditLogEntry(BaseModel):
     """A single audit log entry."""
@@ -559,10 +717,11 @@ def _check_restart_acl() -> bool:
     """
     Check if restart is allowed by ACL.
 
-    Restart requires explicit opt-in via environment variable for safety.
+    Restart requires explicit opt-in via config.json for safety.
     """
-    acl_value = os.environ.get("ADMIN_RESTART_ENABLED", "false").lower()
-    return acl_value in ("true", "1", "yes")
+    from ibkr_core.config import get_config
+
+    return get_config().admin_restart_enabled
 
 
 @router.post(
@@ -571,7 +730,7 @@ def _check_restart_acl() -> bool:
     summary="Restart trading services",
     description=(
         "Restart specified Windows services (mm-ibkr-api, mm-signal-listener). "
-        "Requires ADMIN_RESTART_ENABLED=true in environment for safety. "
+        "Requires admin_restart_enabled=true in config.json for safety. "
         "Use dry_run=true to check service status without restarting."
     ),
     responses={
@@ -589,19 +748,19 @@ async def restart_services(
 
     This endpoint:
     1. Validates admin token and localhost access
-    2. Checks if restart is enabled via ACL (ADMIN_RESTART_ENABLED)
+    2. Checks if restart is enabled via ACL (config.json)
     3. Calls restart-services.ps1 or uses native service control
     4. Returns results for each service
 
     Safety notes:
-    - Requires explicit ADMIN_RESTART_ENABLED=true
+    - Requires explicit admin_restart_enabled=true
     - Logs all restart operations to audit trail
     - Use dry_run=true to validate without restarting
     """
     # Check restart ACL
     if not _check_restart_acl():
         logger.warning(
-            f"Restart rejected: ADMIN_RESTART_ENABLED not set. "
+            "Restart rejected: admin_restart_enabled not set in config.json. "
             f"Client IP: {request.client.host if request.client else 'unknown'}"
         )
         raise HTTPException(
@@ -609,8 +768,8 @@ async def restart_services(
             detail={
                 "error": "RESTART_NOT_ENABLED",
                 "message": (
-                    "Service restart is not enabled. Set ADMIN_RESTART_ENABLED=true "
-                    "in environment to allow restart operations."
+                    "Service restart is not enabled. Set admin_restart_enabled=true "
+                    "in config.json to allow restart operations."
                 ),
             },
         )

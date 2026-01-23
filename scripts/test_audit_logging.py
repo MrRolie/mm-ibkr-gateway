@@ -104,8 +104,8 @@ def main():
             except Exception as e:
                 print(f"   Order placement failed: {e}")
         else:
-            print("\n4. ORDERS_ENABLED=false - skipping actual order placement")
-            print("   Set ORDERS_ENABLED=true in .env to test real order flow")
+            print("\n4. orders_enabled=false - skipping actual order placement")
+            print("   Set orders_enabled=true in control.json to test real order flow")
 
     finally:
         # Disconnect

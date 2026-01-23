@@ -4,7 +4,6 @@ time-window enforcement, and trading control integration.
 """
 
 import logging
-import os
 import time
 from datetime import datetime
 from typing import Callable
@@ -132,13 +131,23 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        self.start_time = os.getenv("RUN_WINDOW_START", "04:00")
-        self.end_time = os.getenv("RUN_WINDOW_END", "20:00")
-        self.days_str = os.getenv("RUN_WINDOW_DAYS", "Mon,Tue,Wed,Thu,Fri")
-        self.timezone_str = os.getenv("RUN_WINDOW_TIMEZONE", "America/Toronto")
+        self.start_time = "04:00"
+        self.end_time = "20:00"
+        self.days_str = "Mon,Tue,Wed,Thu,Fri"
+        self.timezone_str = "America/Toronto"
+
+    def _refresh_config(self) -> None:
+        from ibkr_core.config import get_config
+
+        config = get_config()
+        self.start_time = config.run_window_start
+        self.end_time = config.run_window_end
+        self.days_str = config.run_window_days
+        self.timezone_str = config.run_window_timezone
 
     def is_in_run_window(self) -> bool:
         """Check if current time is within RUN_WINDOW_* settings."""
+        self._refresh_config()
         try:
             tz = ZoneInfo(self.timezone_str)
             now = datetime.now(tz)

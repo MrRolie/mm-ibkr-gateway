@@ -11,7 +11,6 @@ Provides:
 
 import json
 import logging
-import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -32,12 +31,15 @@ SCHEMA_VERSION = 1
 
 def get_db_path() -> str:
     """
-    Get database path from environment or default.
+    Get database path from runtime config or default.
 
     Returns:
         Path to SQLite database file
     """
-    return os.environ.get("AUDIT_DB_PATH", DEFAULT_DB_PATH)
+    from ibkr_core.config import get_config
+
+    config = get_config()
+    return config.audit_db_path or DEFAULT_DB_PATH
 
 
 # =============================================================================

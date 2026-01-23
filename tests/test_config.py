@@ -2,7 +2,7 @@
 Unit tests for config module.
 
 Tests:
-  - Configuration loading from environment
+  - Configuration loading from config.json and env fallback
   - Validation of TRADING_MODE
   - Validation of ORDERS_ENABLED
   - TradingDisabledError when orders are disabled
@@ -23,6 +23,7 @@ from ibkr_core.config import (
     load_config,
     reset_config,
 )
+from ibkr_core.runtime_config import load_config_data, write_config_data
 
 
 @pytest.fixture(autouse=True)
@@ -42,11 +43,17 @@ def reset_config_fixture():
         "API_PORT",
         "LOG_LEVEL",
         "LIVE_TRADING_OVERRIDE_FILE",
+        "MM_IBKR_CONFIG_PATH",
     ]
     for key in env_keys:
         old_env[key] = os.environ.get(key)
         if key in os.environ:
             del os.environ[key]
+
+    temp_dir = tempfile.TemporaryDirectory()
+    config_path = Path(temp_dir.name) / "config.json"
+    os.environ["MM_IBKR_CONFIG_PATH"] = str(config_path)
+    load_config_data(create_if_missing=True)
 
     yield
 
@@ -56,6 +63,7 @@ def reset_config_fixture():
             os.environ[key] = value
         elif key in os.environ:
             del os.environ[key]
+    temp_dir.cleanup()
     reset_config()
 
 
@@ -194,18 +202,22 @@ class TestInvalidConfiguration:
     """Test invalid configuration handling."""
 
     def test_invalid_ibkr_port(self):
-        """Test that invalid PAPER_GATEWAY_PORT raises InvalidConfigError."""
-        os.environ["PAPER_GATEWAY_PORT"] = "not_a_number"
+        """Test that invalid paper_gateway_port is coerced to default."""
+        config_data = load_config_data()
+        config_data["paper_gateway_port"] = "not_a_number"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
 
-        with pytest.raises(InvalidConfigError, match="PAPER_GATEWAY_PORT must be an integer"):
-            load_config()
+        config = load_config()
+        assert config.paper_gateway_port == 4002
 
     def test_invalid_api_port(self):
-        """Test that invalid API_PORT raises InvalidConfigError."""
-        os.environ["API_PORT"] = "not_a_number"
+        """Test that invalid api_port is coerced to default."""
+        config_data = load_config_data()
+        config_data["api_port"] = "not_a_number"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
 
-        with pytest.raises(InvalidConfigError, match="API_PORT must be an integer"):
-            load_config()
+        config = load_config()
+        assert config.api_port == 8000
 
 
 class TestGlobalConfig:

@@ -83,8 +83,8 @@ def validate_paper_mode() -> bool:
     try:
         config = get_config()
         if config.trading_mode != "paper":
-            print_error(f"Demo requires TRADING_MODE=paper. Current mode: {config.trading_mode}")
-            print_info("Solution", "Set TRADING_MODE=paper in your .env file")
+            print_error(f"Demo requires trading_mode=paper (control.json). Current mode: {config.trading_mode}")
+            print_info("Solution", "Set trading_mode=paper in control.json (mm-control)")
             return False
         return True
     except InvalidConfigError as e:
@@ -134,7 +134,7 @@ def check_gateway_connection(client: Optional[IBKRClient] = None) -> bool:
         print("  1. Start IBKR Gateway or TWS")
         print("  2. Enable API connections in settings")
         print("  3. Verify port 4002 is configured for paper trading")
-        print("  4. Check IBKR_GATEWAY_HOST and PAPER_GATEWAY_PORT in .env")
+        print("  4. Check ibkr_gateway_host and paper_gateway_port in config.json")
         return False
 
     except Exception as e:

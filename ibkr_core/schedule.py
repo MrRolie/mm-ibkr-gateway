@@ -5,7 +5,6 @@ Provides utilities to check if the current time is within the configured
 run window, and to calculate next window start/end times.
 """
 
-import os
 from datetime import datetime, time, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -45,12 +44,15 @@ class ScheduleConfig:
 
     @classmethod
     def from_env(cls) -> "ScheduleConfig":
-        """Load schedule configuration from environment variables."""
+        """Load schedule configuration from runtime config."""
+        from ibkr_core.config import get_config
+
+        config = get_config()
         return cls(
-            start_time=os.getenv("RUN_WINDOW_START", "04:00"),
-            end_time=os.getenv("RUN_WINDOW_END", "20:00"),
-            days=os.getenv("RUN_WINDOW_DAYS", "Mon,Tue,Wed,Thu,Fri"),
-            timezone=os.getenv("RUN_WINDOW_TIMEZONE", "America/Toronto"),
+            start_time=config.run_window_start,
+            end_time=config.run_window_end,
+            days=config.run_window_days,
+            timezone=config.run_window_timezone,
         )
 
 

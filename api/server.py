@@ -591,8 +591,8 @@ async def preview_order(
     tags=["Orders"],
     summary="Place an order",
     description=(
-        "Place an order. Respects ORDERS_ENABLED and TRADING_MODE settings. "
-        "Returns SIMULATED status if ORDERS_ENABLED=false."
+        "Place an order. Respects trading controls from control.json. "
+        "Returns SIMULATED status if orders_enabled=false."
     ),
     responses={
         400: {"model": ErrorResponse, "description": "Validation error"},

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Creates inbound rules to:
-    - Allow API port access from configured clients (ALLOWED_IPS)
+    - Allow API port access from configured clients (allowed_ips in config.json)
     - Allow API port access from localhost
     - Block API port from all other sources
 
@@ -46,12 +46,15 @@ if (-not (Test-IsAdmin)) {
 Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Get configuration
-$apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
-$bindHost = $env:API_BIND_HOST
-$allowedEnv = $env:ALLOWED_IPS
-if (-not $allowedEnv) {
-    $allowedEnv = "127.0.0.1"
+$config = Import-GatewayConfig
+if (-not $config) {
+    $configPath = Get-GatewayConfigPath
+    Write-Host "ERROR: config.json not found at $configPath. Run configure.ps1 first." -ForegroundColor Red
+    exit 1
 }
+$apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
+$bindHost = Get-GatewayConfigValue $config "api_bind_host" $null
+$allowedEnv = Get-GatewayConfigValue $config "allowed_ips" "127.0.0.1"
 
 Write-Host "Configuration:" -ForegroundColor Gray
 Write-Host "  API Port: $apiPort"

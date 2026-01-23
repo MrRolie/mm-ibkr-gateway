@@ -60,9 +60,9 @@ For production deployment, consider:
 
 This system is designed with multiple layers of protection:
 
-- **Paper mode default**: `TRADING_MODE=paper` is the default setting
-- **Orders disabled by default**: `ORDERS_ENABLED=false` prevents accidental order placement
-- **Dual-toggle protection**: Live trading requires BOTH `TRADING_MODE=live` AND `ORDERS_ENABLED=true`
+- **Paper mode default**: `trading_mode=paper` in `control.json` is the default setting
+- **Orders disabled by default**: `orders_enabled=false` in `control.json` prevents accidental order placement
+- **Dual-toggle protection**: Live trading requires `trading_mode=live`, `orders_enabled=true`, and an override file
 - **Override file requirement**: Live trading with orders enabled requires a confirmation file
 - **SIMULATED status**: When orders are disabled, the system returns `SIMULATED` status instead of placing real orders
 

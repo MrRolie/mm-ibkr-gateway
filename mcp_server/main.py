@@ -102,7 +102,7 @@ Available tools:
 - get_order_status: Get status of an order
 - cancel_order: Cancel an order
 
-Note: Order placement respects ORDERS_ENABLED setting. If disabled, orders return SIMULATED status.
+Note: Order placement respects orders_enabled in control.json. If disabled, orders return SIMULATED status.
 """,
     lifespan=app_lifespan,
 )
@@ -386,7 +386,7 @@ async def preview_order(
 
     Returns estimated execution details including price, notional, commission,
     and margin impact. Use this before placing an order to verify the details.
-    This tool always works regardless of ORDERS_ENABLED setting.
+    This tool always works regardless of orders_enabled in control.json.
 
     Args:
         instrument_symbol: Symbol/ticker (e.g., 'AAPL', 'MES')
@@ -457,11 +457,11 @@ async def place_order(
     stop_loss_price: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
-    Place an order (SAFE BY DEFAULT - requires ORDERS_ENABLED=true).
+    Place an order (SAFE BY DEFAULT - requires orders_enabled=true in control.json).
 
-    IMPORTANT: Orders are DISABLED by default. If ORDERS_ENABLED=false,
+    IMPORTANT: Orders are DISABLED by default. If orders_enabled=false in control.json,
     returns SIMULATED status instead of actually placing the order.
-    Set ORDERS_ENABLED=true in .env to enable real order placement.
+    Set orders_enabled=true in control.json to enable real order placement.
 
     Args:
         instrument_symbol: Symbol/ticker (e.g., 'AAPL', 'MES')

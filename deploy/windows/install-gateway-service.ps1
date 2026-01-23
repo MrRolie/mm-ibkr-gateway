@@ -37,40 +37,47 @@ $NssmPath = "C:\Program Files\NSSM\nssm.exe"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $EnvFile = Join-Path $RepoRoot ".env"
 
+# Source common functions
+. (Join-Path $PSScriptRoot "utils\common.ps1")
+
 # Validate NSSM is installed
 if (-not (Test-Path $NssmPath)) {
     Write-Error "NSSM not found at $NssmPath. Run install-nssm.ps1 first."
     exit 1
 }
 
-# Load .env to get paths
+# Load .env to get secrets (and optional config path override)
 if (-not (Test-Path $EnvFile)) {
-    Write-Error ".env file not found at $EnvFile. Run configure.ps1 first."
+    Write-Error ".env file not found at $EnvFile. Run configure.ps1 first or create a minimal .env with API_KEY/ADMIN_TOKEN."
     exit 1
 }
 
-# Parse .env for required variables
-$envVars = @{}
-Get-Content $EnvFile | Where-Object {
-    -not ($_.Trim().StartsWith("#")) -and $_.Trim().Length -gt 0 -and $_.Contains("=")
-} | ForEach-Object {
-    $parts = $_ -split "=", 2
-    $key = $parts[0].Trim()
-    $value = $parts[1].Trim()
-    $envVars[$key] = $value
+Import-EnvFile -EnvFilePath $EnvFile
+
+# Load config.json for operational paths
+$config = Import-GatewayConfig
+if (-not $config) {
+    $configPath = Get-GatewayConfigPath
+    Write-Error "config.json not found at $configPath. Run configure.ps1 first."
+    exit 1
 }
 
-$GatewayPath = $envVars["IBKR_GATEWAY_PATH"]
-$LogDir = $envVars["LOG_DIR"]
-$DataStorageDir = $envVars["DATA_STORAGE_DIR"]
+$GatewayPath = Get-GatewayConfigValue $config "ibkr_gateway_path" $null
+$LogDir = Get-GatewayConfigValue $config "log_dir" $null
+$DataStorageDir = Get-GatewayConfigValue $config "data_storage_dir" $null
 
 if (-not $GatewayPath) {
-    Write-Error "IBKR_GATEWAY_PATH not found in .env"
+    Write-Error "ibkr_gateway_path not configured in config.json"
     exit 1
 }
 
 if (-not $LogDir) {
-    $LogDir = Join-Path $DataStorageDir "logs"
+    if ($DataStorageDir) {
+        $LogDir = Join-Path $DataStorageDir "logs"
+    } else {
+        Write-Error "log_dir or data_storage_dir not configured in config.json"
+        exit 1
+    }
 }
 
 $GatewayExe = Join-Path $GatewayPath "ibgateway.exe"
@@ -78,7 +85,7 @@ $GatewayExe = Join-Path $GatewayPath "ibgateway.exe"
 # Validate prerequisites
 if (-not (Test-Path $GatewayExe)) {
     Write-Error "IBKR Gateway not found at $GatewayExe"
-    Write-Host "Ensure IBKR Gateway is installed and IBKR_GATEWAY_PATH is correct in .env"
+    Write-Host "Ensure IBKR Gateway is installed and ibkr_gateway_path is correct in config.json"
     exit 1
 }
 
@@ -158,8 +165,21 @@ $envString = $envContent -join "`n"
 
 # Set service display name and description
 Write-Verbose "Setting display name and description..."
-$tradingMode = $envVars["TRADING_MODE"]
-$displayMode = if ($tradingMode -eq "live") { "LIVE TRADING" } else { "Paper Trading" }
+$displayMode = "Managed by control.json"
+$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlFile = Join-Path $controlBaseDir "control.json"
+if (Test-Path $controlFile) {
+    try {
+        $controlState = Get-Content -Path $controlFile -Raw | ConvertFrom-Json
+        if ($controlState.trading_mode -eq "live") {
+            $displayMode = "LIVE TRADING"
+        } elseif ($controlState.trading_mode -eq "paper") {
+            $displayMode = "Paper Trading"
+        }
+    } catch {
+        $displayMode = "Managed by control.json"
+    }
+}
 & $NssmPath set $ServiceName DisplayName "MM IBKR Gateway ($displayMode)"
 & $NssmPath set $ServiceName Description "Interactive Brokers Gateway with auto-login (IBAutomater). Auto-starts on boot, auto-restarts on failure."
 
@@ -169,7 +189,7 @@ Write-Host ""
 Write-Host "Service Name: $ServiceName"
 Write-Host "Executable: $GatewayExe"
 Write-Host "Working Directory: $GatewayPath"
-Write-Host "Trading Mode: $displayMode" -ForegroundColor $(if ($tradingMode -eq "live") { "Red" } else { "Yellow" })
+Write-Host "Trading Mode: $displayMode" -ForegroundColor $(if ($displayMode -eq "LIVE TRADING") { "Red" } else { "Yellow" })
 Write-Host "Logs: $LogDir"
 Write-Host ""
 Write-Host "To start the service:"

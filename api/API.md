@@ -6,12 +6,12 @@ REST API for Interactive Brokers Gateway integration.
 
 This API is **SAFE BY DEFAULT**:
 
-- **Orders disabled**: Order placement is disabled by default (`ORDERS_ENABLED=false`)
+- **Orders disabled**: Order placement is disabled by default (`orders_enabled=false` in `control.json`)
 - **SIMULATED status**: When orders are disabled, the `/orders` endpoint returns a `SIMULATED` status instead of placing real orders
 - **Preview always works**: The `/orders/preview` endpoint always works regardless of settings (read-only simulation)
-- **Paper mode default**: System defaults to paper trading (`TRADING_MODE=paper`)
+- **Paper mode default**: System defaults to paper trading (`trading_mode=paper` in `control.json`)
 
-To enable real order placement, you must explicitly set `ORDERS_ENABLED=true` in your `.env` file. For live trading with orders enabled, an additional confirmation file is required. See the main README for complete safety documentation.
+To enable real order placement, use `mm-control` (CLI or `set-control.ps1`) to set `orders_enabled=true` and `dry_run=false` in `control.json`. For live trading with orders enabled, set `trading_mode=live` and provide an override file. See the main README for complete safety documentation.
 
 ## Quick Start
 
@@ -28,38 +28,20 @@ uvicorn api.server:app --reload
 python -m api.server
 ```
 
-### Environment Configuration
+### Runtime Configuration
 
-Create a `.env` file with the following variables:
+Operational settings load from `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_CONFIG_PATH`).
+Trading controls load from `C:\ProgramData\mm-control\control.json`.
+
+Minimal `.env` (repo root) for secrets:
 
 ```bash
-# IBKR Gateway Connection
-IBKR_GATEWAY_HOST=127.0.0.1
-
-# Paper Trading (default)
-PAPER_GATEWAY_PORT=4002
-PAPER_CLIENT_ID=1
-
-# Live Trading (if needed)
-LIVE_GATEWAY_PORT=4001
-LIVE_CLIENT_ID=777
-
-# Trading Mode: paper or live
-TRADING_MODE=paper
-
-# Order Placement: false (simulation) or true (real orders)
-ORDERS_ENABLED=false
-
-# API Server
-API_PORT=8000
-LOG_LEVEL=INFO
-
 # Optional: API Key for authentication
 # If set, all requests must include X-API-Key header
 # API_KEY=your-secret-key
 
-# Optional: Request timeout in seconds
-# API_REQUEST_TIMEOUT=30
+# Admin token for /admin/* endpoints (required for admin operations)
+# ADMIN_TOKEN=your-admin-secret-token
 ```
 
 ## Authentication
@@ -73,6 +55,14 @@ curl -H "X-API-Key: your-secret-key" http://localhost:8000/account/summary
 # Without authentication (local-only mode)
 curl http://localhost:8000/account/summary
 ```
+
+## Admin Endpoints
+
+Admin endpoints are **localhost-only** and require `ADMIN_TOKEN`.
+
+- `GET /admin/config` returns the current `config.json` data.
+- `PUT /admin/config` updates operational settings in `config.json` (returns `restart_required` when a restart is needed).
+- `POST /admin/restart` requires `admin_restart_enabled=true` in `config.json`.
 
 ## Endpoints
 
@@ -338,7 +328,7 @@ Preview an order without placing it.
 
 Place an order.
 
-**Important:** Respects `ORDERS_ENABLED` setting. If `false`, returns `SIMULATED` status.
+**Important:** Respects `orders_enabled` from `control.json`. If `false`, returns `SIMULATED` status.
 
 **Request:** Same as `/orders/preview`
 
@@ -367,7 +357,7 @@ Place an order.
 |--------|-------------|
 | ACCEPTED | Order placed successfully |
 | REJECTED | Order was rejected |
-| SIMULATED | ORDERS_ENABLED=false (not actually placed) |
+| SIMULATED | orders_enabled=false (not actually placed) |
 
 For **BRACKET** orders, `orderIds` contains all 3 order IDs and `orderRoles` maps role to ID:
 
@@ -482,7 +472,7 @@ All errors follow a consistent format:
 | PACING_VIOLATION | 429 | Too many requests |
 | CONTRACT_RESOLUTION_ERROR | 400 | Invalid contract specification |
 | ACCOUNT_ERROR | 500 | Account data retrieval failed |
-| TRADING_DISABLED | 403 | ORDERS_ENABLED=false |
+| TRADING_DISABLED | 403 | orders_enabled=false |
 | ORDER_VALIDATION_ERROR | 400 | Invalid order parameters |
 | ORDER_PLACEMENT_ERROR | 500 | Order placement failed |
 | ORDER_NOT_FOUND | 404 | Order not found |
@@ -507,14 +497,16 @@ Configure via `API_REQUEST_TIMEOUT` environment variable.
 
 ## Safety Notes
 
-1. **Paper Trading Only**: By default, `TRADING_MODE=paper`. Never set to `live` without explicit override file.
+Trading controls are managed via `C:\ProgramData\mm-control\control.json`. Use `mm-control status` or `set-control.ps1` to view/change settings.
 
-2. **Orders Disabled**: By default, `ORDERS_ENABLED=false`. Orders return `SIMULATED` status.
+1. **Paper Trading Only**: By default, `trading_mode=paper`. Never set to `live` without explicit override file.
+
+2. **Orders Disabled**: By default, `orders_enabled=false`. Orders return `SIMULATED` status.
 
 3. **Live Trading Override**: To enable live trading:
-   - Set `TRADING_MODE=live`
-   - Set `ORDERS_ENABLED=true`
-   - Set `LIVE_TRADING_OVERRIDE_FILE` to path of an existing file
+   - Set `trading_mode=live` in control.json
+   - Set `orders_enabled=true` in control.json
+   - Set `live_trading_override_file` to path of an existing file
 
 4. **No Destructive Operations**: API never performs destructive operations without explicit request.
 

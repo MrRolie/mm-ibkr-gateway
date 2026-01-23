@@ -36,34 +36,36 @@ $NssmPath = "C:\Program Files\NSSM\nssm.exe"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $EnvFile = Join-Path $RepoRoot ".env"
 
+# Source common functions
+. (Join-Path $PSScriptRoot "utils\common.ps1")
+
 # Validate NSSM is installed
 if (-not (Test-Path $NssmPath)) {
     Write-Error "NSSM not found at $NssmPath. Run install-nssm.ps1 first."
     exit 1
 }
 
-# Load .env to get paths
+# Load .env to get secrets (and optional config path override)
 if (-not (Test-Path $EnvFile)) {
-    Write-Error ".env file not found at $EnvFile. Run configure.ps1 first."
+    Write-Error ".env file not found at $EnvFile. Run configure.ps1 first or create a minimal .env with API_KEY/ADMIN_TOKEN."
     exit 1
 }
 
-# Parse .env for required variables
-$envVars = @{}
-Get-Content $EnvFile | Where-Object {
-    -not ($_.Trim().StartsWith("#")) -and $_.Trim().Length -gt 0 -and $_.Contains("=")
-} | ForEach-Object {
-    $parts = $_ -split "=", 2
-    $key = $parts[0].Trim()
-    $value = $parts[1].Trim()
-    $envVars[$key] = $value
+Import-EnvFile -EnvFilePath $EnvFile
+
+# Load config.json for operational paths
+$config = Import-GatewayConfig
+if (-not $config) {
+    $configPath = Get-GatewayConfigPath
+    Write-Error "config.json not found at $configPath. Run configure.ps1 first."
+    exit 1
 }
 
-$DataStorageDir = $envVars["DATA_STORAGE_DIR"]
-$LogDir = $envVars["LOG_DIR"]
+$DataStorageDir = Get-GatewayConfigValue $config "data_storage_dir" $null
+$LogDir = Get-GatewayConfigValue $config "log_dir" $null
 
 if (-not $DataStorageDir) {
-    Write-Error "DATA_STORAGE_DIR not found in .env"
+    Write-Error "data_storage_dir not configured in config.json"
     exit 1
 }
 
@@ -75,7 +77,7 @@ $PythonExe = Join-Path $DataStorageDir "venv\Scripts\python.exe"
 
 # Validate prerequisites
 if (-not (Test-Path $PythonExe)) {
-    Write-Error "Python venv not found at $PythonExe. Ensure venv is created at DATA_STORAGE_DIR."
+    Write-Error "Python venv not found at $PythonExe. Ensure venv is created under data_storage_dir."
     exit 1
 }
 

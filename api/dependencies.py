@@ -289,12 +289,10 @@ def log_request(ctx: RequestContext, status: str = "success", error: str = None)
 
 
 def get_request_timeout() -> float:
-    """Get request timeout from environment or default."""
-    default_timeout = 30.0  # 30 seconds
-    try:
-        return float(os.environ.get("API_REQUEST_TIMEOUT", default_timeout))
-    except (ValueError, TypeError):
-        return default_timeout
+    """Get request timeout from runtime config."""
+    from ibkr_core.config import get_config
+
+    return get_config().api_request_timeout
 
 
 async def run_with_timeout(coro, timeout_s: float):
@@ -353,8 +351,9 @@ async def lifespan_context(app):
     try:
         from mm_control import start_ttl_monitor
 
-        if os.getenv("MM_CONTROL_ENABLE_BACKGROUND_MONITOR", "true").lower() != "false":
-            check_interval = int(os.getenv("MM_CONTROL_TTL_CHECK_INTERVAL", "30"))
+        config = get_config()
+        if config.mm_control_enable_background_monitor:
+            check_interval = config.mm_control_ttl_check_interval
             logger.info(f"Starting mm-control TTL monitor (check interval: {check_interval}s)")
 
             def on_ttl_revert():

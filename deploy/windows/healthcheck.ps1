@@ -31,9 +31,26 @@ $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 Import-EnvFile -EnvFilePath (Join-Path $RepoRoot ".env")
 
 # Configuration
-$gatewayPort = if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
-$apiPort = if ($env:API_PORT) { [int]$env:API_PORT } else { 8000 }
-$apiHost = if ($env:API_BIND_HOST) { $env:API_BIND_HOST } else { "127.0.0.1" }
+$config = Import-GatewayConfig
+$apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
+$apiHost = Get-GatewayConfigValue $config "api_bind_host" "127.0.0.1"
+$paperPort = [int](Get-GatewayConfigValue $config "paper_gateway_port" 4002)
+$livePort = [int](Get-GatewayConfigValue $config "live_gateway_port" 4001)
+$gatewayPort = $paperPort
+
+$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlFile = Join-Path $controlBaseDir "control.json"
+if (Test-Path $controlFile) {
+    try {
+        $controlState = Get-Content -Path $controlFile -Raw | ConvertFrom-Json
+        if ($controlState.trading_mode -eq "live") {
+            $gatewayPort = $livePort
+        }
+    } catch {
+        # Fall back to paper port if control.json is unreadable
+        $gatewayPort = $paperPort
+    }
+}
 
 # Results object
 $results = @{

@@ -12,9 +12,11 @@ import json
 import logging
 import os
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
+from ibkr_core.config import reset_config
 from ibkr_core.logging_config import (
     CorrelationIdJsonFormatter,
     CorrelationIdTextFormatter,
@@ -25,6 +27,23 @@ from ibkr_core.logging_config import (
     log_with_context,
     set_correlation_id,
 )
+from ibkr_core.runtime_config import load_config_data, write_config_data
+
+
+@pytest.fixture(autouse=True)
+def runtime_config_fixture(tmp_path):
+    """Ensure config.json is isolated per test."""
+    reset_config()
+    old_path = os.environ.get("MM_IBKR_CONFIG_PATH")
+    config_path = tmp_path / "config.json"
+    os.environ["MM_IBKR_CONFIG_PATH"] = str(config_path)
+    load_config_data(create_if_missing=True)
+    yield
+    if old_path is not None:
+        os.environ["MM_IBKR_CONFIG_PATH"] = old_path
+    else:
+        os.environ.pop("MM_IBKR_CONFIG_PATH", None)
+    reset_config()
 
 # =============================================================================
 # Unit Tests - Log Configuration
@@ -36,47 +55,47 @@ class TestLogConfiguration:
 
     def test_get_log_level_default(self):
         """Test default log level is INFO."""
-        # Clear env var
-        if "LOG_LEVEL" in os.environ:
-            del os.environ["LOG_LEVEL"]
-
         level = get_log_level()
         assert level == logging.INFO
 
-    def test_get_log_level_from_env(self):
-        """Test log level from environment variable."""
-        os.environ["LOG_LEVEL"] = "DEBUG"
+    def test_get_log_level_from_config(self):
+        """Test log level from config.json."""
+        config_data = load_config_data()
+        config_data["log_level"] = "DEBUG"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+        reset_config()
         assert get_log_level() == logging.DEBUG
 
-        os.environ["LOG_LEVEL"] = "WARNING"
+        config_data = load_config_data()
+        config_data["log_level"] = "WARNING"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+        reset_config()
         assert get_log_level() == logging.WARNING
 
-        os.environ["LOG_LEVEL"] = "ERROR"
+        config_data = load_config_data()
+        config_data["log_level"] = "ERROR"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+        reset_config()
         assert get_log_level() == logging.ERROR
-
-        # Clean up
-        if "LOG_LEVEL" in os.environ:
-            del os.environ["LOG_LEVEL"]
 
     def test_get_log_format_default(self):
         """Test default log format is JSON."""
-        if "LOG_FORMAT" in os.environ:
-            del os.environ["LOG_FORMAT"]
-
         format_type = get_log_format()
         assert format_type == "json"
 
-    def test_get_log_format_from_env(self):
-        """Test log format from environment variable."""
-        os.environ["LOG_FORMAT"] = "text"
+    def test_get_log_format_from_config(self):
+        """Test log format from config.json."""
+        config_data = load_config_data()
+        config_data["log_format"] = "text"
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+        reset_config()
         assert get_log_format() == "text"
 
-        os.environ["LOG_FORMAT"] = "JSON"  # Case insensitive
+        config_data = load_config_data()
+        config_data["log_format"] = "JSON"  # Case insensitive
+        write_config_data(config_data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+        reset_config()
         assert get_log_format() == "json"
-
-        # Clean up
-        if "LOG_FORMAT" in os.environ:
-            del os.environ["LOG_FORMAT"]
 
     def test_configure_logging_json(self):
         """Test logging configuration with JSON format."""

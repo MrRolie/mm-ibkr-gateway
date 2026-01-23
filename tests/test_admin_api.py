@@ -8,10 +8,38 @@ Tests cover:
 
 import asyncio
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 from fastapi import HTTPException
+
+from ibkr_core.config import reset_config
+from ibkr_core.runtime_config import load_config_data, write_config_data
+
+
+@pytest.fixture(autouse=True)
+def runtime_config_fixture(tmp_path):
+    """Ensure config.json is isolated per test."""
+    reset_config()
+    old_path = os.environ.get("MM_IBKR_CONFIG_PATH")
+    config_path = tmp_path / "config.json"
+    os.environ["MM_IBKR_CONFIG_PATH"] = str(config_path)
+    load_config_data(create_if_missing=True)
+    yield
+    if old_path is not None:
+        os.environ["MM_IBKR_CONFIG_PATH"] = old_path
+    else:
+        os.environ.pop("MM_IBKR_CONFIG_PATH", None)
+    reset_config()
+
+
+def update_runtime_config(updates):
+    """Update config.json with overrides and reset cached config."""
+    data = load_config_data()
+    data.update(updates)
+    write_config_data(data, path=Path(os.environ["MM_IBKR_CONFIG_PATH"]))
+    reset_config()
 
 
 class TestAdminTokenVerification:
@@ -468,30 +496,28 @@ class TestRestartACL:
     """Tests for restart ACL (access control list) check."""
 
     def test_restart_disabled_by_default(self):
-        """Restart should be disabled when env not set."""
-        env = {k: v for k, v in os.environ.items() if k != "ADMIN_RESTART_ENABLED"}
-        with patch.dict(os.environ, env, clear=True):
-            from api.admin import _check_restart_acl
-            assert _check_restart_acl() is False
+        """Restart should be disabled by default."""
+        from api.admin import _check_restart_acl
+        assert _check_restart_acl() is False
 
     def test_restart_disabled_when_false(self):
         """Restart should be disabled when explicitly set to false."""
-        with patch.dict(os.environ, {"ADMIN_RESTART_ENABLED": "false"}):
-            from api.admin import _check_restart_acl
-            assert _check_restart_acl() is False
+        update_runtime_config({"admin_restart_enabled": False})
+        from api.admin import _check_restart_acl
+        assert _check_restart_acl() is False
 
     def test_restart_enabled_when_true(self):
         """Restart should be enabled when set to true."""
-        with patch.dict(os.environ, {"ADMIN_RESTART_ENABLED": "true"}):
-            from api.admin import _check_restart_acl
-            assert _check_restart_acl() is True
+        update_runtime_config({"admin_restart_enabled": True})
+        from api.admin import _check_restart_acl
+        assert _check_restart_acl() is True
 
     def test_restart_enabled_with_variations(self):
         """Restart should be enabled with various truthy values."""
         for value in ("true", "TRUE", "True", "1", "yes", "YES"):
-            with patch.dict(os.environ, {"ADMIN_RESTART_ENABLED": value}):
-                from api.admin import _check_restart_acl
-                assert _check_restart_acl() is True, f"Failed for value: {value}"
+            update_runtime_config({"admin_restart_enabled": value})
+            from api.admin import _check_restart_acl
+            assert _check_restart_acl() is True, f"Failed for value: {value}"
 
 
 class TestRestartRequest:
@@ -695,14 +721,10 @@ class TestRestartEndpointACLEnforcement:
     """Tests for restart endpoint ACL enforcement."""
 
     def test_restart_rejected_when_not_enabled(self):
-        """Restart should be rejected when ADMIN_RESTART_ENABLED not set."""
-        env = {
-            k: v for k, v in os.environ.items()
-            if k not in ("ADMIN_RESTART_ENABLED",)
-        }
-        env["ADMIN_TOKEN"] = "test-token"
+        """Restart should be rejected when admin_restart_enabled is false."""
+        update_runtime_config({"admin_restart_enabled": False})
 
-        with patch.dict(os.environ, env, clear=True):
+        with patch.dict(os.environ, {"ADMIN_TOKEN": "test-token"}):
             from api.admin import restart_services, RestartRequest
 
             mock_request = MagicMock()

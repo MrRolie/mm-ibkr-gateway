@@ -33,21 +33,35 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Get-Item $ScriptDir).Parent.Parent.FullName
 
+# Source common functions
+. (Join-Path $ScriptDir "utils\common.ps1")
+
 Write-Host "`n=== IBKR Gateway Auto-Login Configuration ===" -ForegroundColor Cyan
 
-# Load .env if exists
+# Load .env if exists (secrets + optional config path override)
 $EnvFile = Join-Path $RepoRoot ".env"
-if (Test-Path $EnvFile) {
-    Get-Content $EnvFile | ForEach-Object {
-        if ($_ -match "^([^#=]+)=(.*)$") {
-            $key = $matches[1].Trim()
-            $value = $matches[2].Trim()
-            Set-Item -Path "Env:$key" -Value $value -ErrorAction SilentlyContinue
-        }
+Import-EnvFile -EnvFilePath $EnvFile
+
+# Load config.json
+$config = Import-GatewayConfig
+$paperPort = [int](Get-GatewayConfigValue $config "paper_gateway_port" 4002)
+$livePort = [int](Get-GatewayConfigValue $config "live_gateway_port" 4001)
+$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlFile = Join-Path $controlBaseDir "control.json"
+$tradingMode = "paper"
+if (Test-Path $controlFile) {
+    try {
+        $controlState = Get-Content -Path $controlFile -Raw | ConvertFrom-Json
+        if ($controlState.trading_mode) { $tradingMode = $controlState.trading_mode }
+    } catch {
+        $tradingMode = "paper"
     }
 }
 
 # Determine gateway path
+if (-not $GatewayPath) {
+    $GatewayPath = Get-GatewayConfigValue $config "ibkr_gateway_path" $null
+}
 if (-not $GatewayPath) {
     $GatewayPath = $env:IBKR_GATEWAY_PATH
 }
@@ -70,7 +84,7 @@ if (-not $GatewayPath) {
 
 if (-not $GatewayPath -or -not (Test-Path $GatewayPath)) {
     Write-Host "ERROR: IBKR Gateway path not found." -ForegroundColor Red
-    Write-Host "Please specify path with -GatewayPath or set IBKR_GATEWAY_PATH in .env" -ForegroundColor Red
+    Write-Host "Please specify path with -GatewayPath or set ibkr_gateway_path in config.json" -ForegroundColor Red
     exit 1
 }
 
@@ -115,7 +129,7 @@ if (-not $Username -or -not $Password) {
 
 # Create jts.ini content for paper trading auto-login
 # Note: IBKR Gateway uses specific settings for auto-login
-$gatewayPort = if ($env:PAPER_GATEWAY_PORT) { $env:PAPER_GATEWAY_PORT } else { "4002" }
+$gatewayPort = if ($tradingMode -eq "live") { $livePort } else { $paperPort }
 $jtsContent = @"
 [IBGateway]
 # Auto-login configuration for paper trading
@@ -242,12 +256,7 @@ if (-not (Test-Path $JarSource)) {
     }
 
     # Create IBAutomater config file
-    $tradingMode = if ($env:TRADING_MODE -eq "live") { "live" } else { "paper" }
-    $gatewayPort = if ($tradingMode -eq "live") {
-        if ($env:LIVE_GATEWAY_PORT) { [int]$env:LIVE_GATEWAY_PORT } else { 4001 }
-    } else {
-        if ($env:PAPER_GATEWAY_PORT) { [int]$env:PAPER_GATEWAY_PORT } else { 4002 }
-    }
+    $gatewayPort = if ($tradingMode -eq "live") { $livePort } else { $paperPort }
     
     $agentConfig = @(
         $Username

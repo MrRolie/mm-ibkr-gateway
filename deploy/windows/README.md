@@ -8,7 +8,7 @@ This guide deploys the **mm-ibkr-gateway** as a production execution node on a W
 - **FastAPI REST API** (LAN-bound, API key protected, Windows service)
 - **NSSM service management** (auto-start on boot, auto-restart on failure)
 - **Time-windowed operation** (API enforces window internally, returns 503 outside hours)
-- **mm-control integration** (centralized trading control via guard file + toggle store)
+- **mm-control integration** (centralized trading control via control.json)
 
 A client on the same LAN connects to this node to execute trades.
 
@@ -35,8 +35,7 @@ A client on the same LAN connects to this node to execute trades.
 │                                                                 │
 │  ┌─────────────────────────────────────────┐                    │
 │  │         mm-control                      │                    │
-│  │  - TRADING_DISABLED (guard file)        │                    │
-│  │  - toggles.json (with TTL)              │                    │
+│  │  - control.json (trading config)        │                    │
 │  │  - control.log (audit)                  │                    │
 │  └─────────────────────────────────────────┘                    │
 └─────────────────────────────────────────────────────────────────┘
@@ -73,17 +72,20 @@ This deployment preserves ALL existing safety mechanisms:
 
 | Safety Layer | Default | Description |
 | -------------- | --------- | ------------- |
-| `TRADING_MODE` | `paper` | Paper trading only (port 4002) |
-| `ORDERS_ENABLED` | `false` | Orders blocked by default |
-| Override File | Not present | Required for live+orders |
+| `trading_mode` | `paper` | Paper trading only (port 4002) |
+| `orders_enabled` | `false` | Orders blocked by default |
+| `dry_run` | `true` | Simulated orders (no real trades) |
+| Override File | Not present | Required for live+enabled |
 | Firewall | Allowed IPs only | LAN-restricted access |
 | API Key | Required | Authentication enforced |
 | Time Window | Weekdays 4-8 | Services only run during market hours |
 
+Trading controls are centralized in `C:\ProgramData\mm-control\control.json`.
+
 **To enable order placement:**
 
-1. Set `ORDERS_ENABLED=true` in `.env`
-2. Create the arm file: `arm_orders_confirmed.txt` in the configured path
+1. Use `mm-control` CLI or `set-control.ps1` to set `orders_enabled=true` and `dry_run=false`
+2. For live trading, also set `trading_mode=live` and create the override file
 
 **Live trading is NOT enabled by this deployment.** Additional steps (documented separately) are required.
 
@@ -105,7 +107,7 @@ This interactive script will:
 - Detect your LAN IP
 - Ask for allowed client IPs, storage path, IBKR credentials, time window, and mm-control settings
 - Create a Python virtual environment and install required packages
-- Generate `.env` file with all settings and create required directories
+- Generate `config.json` (operational settings) and a minimal `.env` (secrets), then create required directories
 
 ### 2. Set Up IBKR Gateway Auto-Login with IBAutomater
 
@@ -127,7 +129,7 @@ This script:
 .\setup-firewall.ps1
 ```
 
-Opens firewall rules for API port (8000) and IBKR Gateway port (4002/4001).
+Opens firewall rules for API port (default 8000) and IBKR Gateway port (default 4002/4001).
 
 ### 4. Install NSSM Service Manager (Admin Required)
 
@@ -150,7 +152,7 @@ Creates `mm-ibkr-api` and `mm-ibkr-gateway` Windows services with:
 - Auto-start on boot
 - Auto-restart on failure (5s delay)
 - Log rotation at 10MB
-- Environment variables loaded from `.env`
+- Secrets loaded from `.env` (API_KEY/ADMIN_TOKEN) and operational settings from `config.json`
 
 **Note:** Services will be in Stopped state after installation.
 
@@ -186,44 +188,64 @@ Runs all health checks and reports status. Check logs if any tests fail.
 
 ## Configuration Reference
 
-### Environment Variables
+### Secrets (.env)
 
-Located in repo root `.env` file:
-
-#### Core Settings
+Located in repo root `.env` file (secrets + optional overrides):
 
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
-| `TRADING_MODE` | `paper` | `paper` or `live` |
-| `ORDERS_ENABLED` | `false` | Enable order placement |
-| `API_KEY` | (generated) | API authentication key |
+| `API_KEY` | (unset) | API authentication key |
+| `ADMIN_TOKEN` | (unset) | Admin token for `/admin/*` endpoints |
+| `MM_IBKR_CONFIG_PATH` | (optional) | Override path to `config.json` |
+
+**Trading controls** (`trading_mode`, `orders_enabled`, `dry_run`) are managed via `C:\ProgramData\mm-control\control.json`.
+Use `mm-control status` or `set-control.ps1` to view/change these settings.
+
+### Runtime Settings (config.json)
+
+Located at `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_CONFIG_PATH`).
 
 #### Network Settings
 
-| Variable | Default | Description |
+| Key | Default | Description |
 | ---------- | --------- | ------------- |
-| `API_BIND_HOST` | (auto-detect) | IP to bind API server |
-| `API_PORT` | `8000` | API server port |
-| `PAPER_GATEWAY_PORT` | `4002` | IBKR Gateway paper port |
-| `ALLOWED_IPS` | `127.0.0.1` | Comma-separated list of allowed remote IPs/CIDR for inbound API connections |
+| `api_bind_host` | `127.0.0.1` | IP to bind API server |
+| `api_port` | `8000` | API server port |
+| `allowed_ips` | `127.0.0.1` | Comma-separated list of allowed remote IPs/CIDR for inbound API connections |
+| `api_request_timeout` | `30.0` | Request timeout in seconds |
+| `ibkr_gateway_host` | `127.0.0.1` | IBKR Gateway host |
+| `paper_gateway_port` | `4002` | IBKR Gateway paper port |
+| `paper_client_id` | `1` | Paper trading client ID |
+| `live_gateway_port` | `4001` | IBKR Gateway live port |
+| `live_client_id` | `777` | Live trading client ID |
 
 #### Time Window Settings
 
-| Variable | Default | Description |
+| Key | Default | Description |
 | ---------- | --------- | ------------- |
-| `RUN_WINDOW_START` | `04:00` | Daily start time (HH:MM) |
-| `RUN_WINDOW_END` | `20:00` | Daily end time (HH:MM) |
-| `RUN_WINDOW_DAYS` | `Mon,Tue,Wed,Thu,Fri` | Active days |
-| `RUN_WINDOW_TIMEZONE` | `America/Toronto` | Timezone for schedule |
+| `run_window_start` | `04:00` | Daily start time (HH:MM) |
+| `run_window_end` | `20:00` | Daily end time (HH:MM) |
+| `run_window_days` | `Mon,Tue,Wed,Thu,Fri` | Active days |
+| `run_window_timezone` | `America/Toronto` | Timezone for schedule |
 
 #### Path Settings
 
-| Variable | Default | Description |
+| Key | Default | Description |
 | ---------- | --------- | ------------- |
-| `DATA_STORAGE_DIR` | (configured) | Base storage directory (ProgramData recommended) |
-| `AUDIT_DB_PATH` | `{BASE}/audit.db` | Audit database location |
-| `LOG_DIR` | `{BASE}/logs/` | Log directory |
-| `IBKR_GATEWAY_PATH` | (configured) | IBKR Gateway install path |
+| `data_storage_dir` | (configured) | Base storage directory (ProgramData recommended) |
+| `audit_db_path` | `{BASE}/audit.db` | Audit database location |
+| `log_dir` | `{BASE}/logs/` | Log directory |
+| `watchdog_log_dir` | `C:\ProgramData\mm-ibkr-gateway\logs` | Watchdog log directory |
+| `ibkr_gateway_path` | (configured) | IBKR Gateway install path |
+
+#### mm-control Settings
+
+| Key | Default | Description |
+| ---------- | --------- | ------------- |
+| `mm_control_base_dir` | `C:\ProgramData\mm-control` | Base directory for mm-control artifacts |
+| `mm_control_enable_background_monitor` | `true` | Enable background TTL monitor in API |
+| `mm_control_ttl_check_interval` | `30` | TTL check interval (seconds) |
+| `admin_restart_enabled` | `false` | Allow `/admin/restart` to restart services |
 
 ---
 
@@ -288,8 +310,8 @@ Both API and Gateway run as Windows services managed by NSSM (Non-Sucking Servic
 - **Auto-start on boot:** Services start automatically when Windows boots (no user login required)
 - **Auto-restart on failure:** NSSM restarts services within 5 seconds if they crash
 - **Log rotation:** Logs rotate automatically at 10MB
-- **Environment variables:** `.env` file loaded into service environment
-- **Window management:** API enforces `RUN_WINDOW_*` internally via middleware
+- **Secrets environment:** `.env` file loaded into service environment (API_KEY/ADMIN_TOKEN)
+- **Window management:** API enforces `run_window_*` from config.json internally via middleware
 
 ### Time Window Behavior
 
@@ -310,51 +332,45 @@ Both API and Gateway run as Windows services managed by NSSM (Non-Sucking Servic
 
 The deployment integrates with [mm-control](https://github.com/your-org/mm-control) for centralized trading control:
 
-### Disable Trading
+### View Trading Status
 
 ```powershell
-# Disable immediately (requires confirmation)
-cd C:\Users\mikae\Coding Projects\mm-control\scripts
-.\disable-trading.ps1 -Reason "Market volatility"
+# Via CLI
+mm-control status
 
-# Disable with 30-minute TTL auto-revert
-.\disable-trading.ps1 -Reason "Testing deployment" -TTL 30
-
-# Skip confirmation (automation)
-.\disable-trading.ps1 -Reason "Automated circuit breaker" -Force
-```
-
-### Enable Trading
-
-```powershell
-# Enable (requires confirmation)
-.\enable-trading.ps1 -Reason "Normal conditions restored"
-
-# Skip confirmation
-.\enable-trading.ps1 -Reason "TTL expired" -Force
-```
-
-### Check Trading Status
-
-```powershell
 # Via API endpoint
-Invoke-RestMethod -Uri "http://localhost:8000/control/status"
+Invoke-RestMethod -Uri "http://localhost:8000/admin/status"
 
-# Via guard file
-Test-Path "C:\ProgramData\mm-control\TRADING_DISABLED"
+# Via control.json directly
+Get-Content "C:\ProgramData\mm-control\control.json" | ConvertFrom-Json
+```
 
-# Via toggles file
-Get-Content "C:\ProgramData\mm-control\toggles.json" | ConvertFrom-Json
+### Change Trading Settings
+
+```powershell
+# Show current settings
+cd C:\Users\mikae\Coding Projects\mm-control\scripts
+.\set-control.ps1 -Show
+
+# Enable paper orders
+.\set-control.ps1 -OrdersEnabled $true -DryRun $false
+
+# Disable orders
+.\set-control.ps1 -OrdersEnabled $false
+
+# Switch to live mode (requires override file)
+.\set-control.ps1 -TradingMode live -OrdersEnabled $true -OverrideFile "C:\path\to\override.txt"
 ```
 
 ### How It Works
 
-1. **Guard File:** Presence of `C:\ProgramData\mm-control\TRADING_DISABLED` blocks all trading
-2. **Toggle Store:** `C:\ProgramData\mm-control\toggles.json` provides structured state with TTL
-3. **API Middleware:** Checks `is_trading_disabled()` before processing orders (returns HTTP 403)
-4. **TTL Monitor:** Background thread in API auto-enables trading when TTL expires
-5. **Audit Log:** All actions logged to `C:\ProgramData\mm-control\control.log`
-- Stop if running longer than: **1 hour** (except watchdog)
+1. **control.json:** `C:\ProgramData\mm-control\control.json` is the source of truth for trading settings
+2. **Settings:** `trading_mode`, `orders_enabled`, `dry_run`, `live_trading_override_file`
+3. **Safe Defaults:** paper mode, orders disabled, dry-run enabled when file missing
+4. **Override File:** Required only when `trading_mode=live` AND `orders_enabled=true`
+5. **Audit Log:** All changes logged to `C:\ProgramData\mm-control\control.log`
+
+---
 
 ### Manual Task Creation (Alternative to setup-tasks.ps1)
 
@@ -510,7 +526,7 @@ If `setup-tasks.ps1` fails with "system cannot find the file specified":
 ### View Recent Logs
 
 ```powershell
-Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Tail 100
+Get-Content "C:\ProgramData\mm-ibkr-gateway\storage\logs\api.log" -Tail 100
 ```
 
 ### API Startup & PID file
@@ -518,9 +534,9 @@ Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Tail 100
 - `start-api.ps1` launches the server using `python -m api.uvicorn_runner`.
   - `api.uvicorn_runner` ensures `sys.stdout`/`sys.stderr` are present (prevents uvicorn/formatter errors when stdio is redirected), and runs `api.boot:app` so an asyncio event loop exists before importing third-party libs that may call `asyncio.get_event_loop()` at import time.
 - PID file behavior:
-  - Primary: writes PID to `LOG_DIR\api.pid` (typically under `%DATA_STORAGE_DIR%/logs`).
+  - Primary: writes PID to `log_dir\api.pid` (typically under `{data_storage_dir}\logs`).
   - Fallback: if the ProgramData storage/log directory is not writable, the script writes the PID to `%TEMP%\api.pid` and logs a warning indicating the fallback location.
-- Recommendation: ensure the service account or the Task Scheduler account has write permissions to `%DATA_STORAGE_DIR%` and its `logs` subdirectory so PID files and logs are persisted in ProgramData.
+- Recommendation: ensure the service account or the Task Scheduler account has write permissions to `data_storage_dir` and its `logs` subdirectory so PID files and logs are persisted in ProgramData.
 
 ### Manual Service Control
 
@@ -547,7 +563,7 @@ Remove-Item "$env:ProgramData\mm-ibkr-gateway\restart_state.json"
 ### Re-run Setup
 
 ```powershell
-# Regenerate .env
+# Regenerate config.json + .env
 .\configure.ps1
 
 # Recreate tasks (removes existing first)
@@ -606,7 +622,8 @@ After running all setup scripts, complete these manual steps:
 Run IBKR Gateway manually once to verify auto-login works:
 
 ```powershell
-& "$env:IBKR_GATEWAY_PATH\ibgateway.exe"
+$config = Get-Content "C:\ProgramData\mm-ibkr-gateway\config.json" | ConvertFrom-Json
+& (Join-Path $config.ibkr_gateway_path "ibgateway.exe")
 ```
 
 ### 2. Copy API Key to client
@@ -637,11 +654,8 @@ curl -H "X-API-Key: $IBKR_API_KEY" http://<laptop-ip>:8000/health
 When ready to enable order placement:
 
 ```powershell
-# Edit .env
-$env:ORDERS_ENABLED = "true"
-
-# Create arm file
-New-Item -Path "$env:DATA_STORAGE_DIR\arm_orders_confirmed.txt" -ItemType File
+cd C:\Users\mikae\Coding Projects\mm-control\scripts
+.\set-control.ps1 -OrdersEnabled $true -DryRun $false
 ```
 
 ### 5. Monitor First Full Day
@@ -650,7 +664,7 @@ Watch the first full trading day:
 
 ```powershell
 # In one terminal
-Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Wait
+Get-Content "C:\ProgramData\mm-ibkr-gateway\storage\logs\api.log" -Wait
 
 # In another terminal
 .\status.ps1
@@ -663,21 +677,44 @@ Get-Content "$env:DATA_STORAGE_DIR\logs\api.log" -Wait
   ```powershell
   .\start-gateway.ps1 -ShowWindow -Force
   ```
-- Daily stop tasks are now optional. Set `STOP_TASKS_ENABLED=true` in `.env` before running `setup-tasks.ps1` if you want daily API/Gateway stop tasks; otherwise they are skipped.
 
 ## Enabling Orders (paper) and Switching to Live
 
-- Orders stay blocked by default (`ORDERS_ENABLED=false`). To allow orders in paper:
-  1. Set `ORDERS_ENABLED=true` in `.env`.
-  2. Ensure mm-control guard file is NOT present (check: `C:\ProgramData\mm-control\TRADING_DISABLED`).
-  3. Restart the API.
-- To switch to live trading:
-  1. Set `TRADING_MODE=live` in `.env`.
-  2. Set `ORDERS_ENABLED=true` only if you intend to place live orders.
-  3. Create a live trading override file at `LIVE_TRADING_OVERRIDE_FILE` (physical guard for live mode).
-  4. Ensure mm-control guard file is NOT present (check: `C:\ProgramData\mm-control\TRADING_DISABLED`).
-  5. Ensure firewall rules, credentials, and IBKR live ports/IDs (`LIVE_GATEWAY_PORT`, `LIVE_CLIENT_ID`) are correct.
-  6. Restart Gateway and API. Verify via `.\status.ps1` and health check that `trading_mode` reports `live` before placing any orders.
+Trading controls are managed via `control.json`. Use the CLI or PowerShell helper:
+
+### Enable Paper Orders
+
+```powershell
+# Using set-control.ps1
+cd C:\Users\mikae\Coding Projects\mm-control\scripts
+.\set-control.ps1 -OrdersEnabled $true -DryRun $false
+
+# Or using mm-control CLI
+mm-control status  # Verify current settings
+```
+
+No API restart required - services read control.json on each request.
+
+### Switch to Live Trading
+
+```powershell
+# 1. Create override file (physical guard for live mode)
+New-Item -Path "C:\ProgramData\mm-control\live_override.txt" -ItemType File
+
+# 2. Update control.json
+.\set-control.ps1 -TradingMode live -OrdersEnabled $true -OverrideFile "C:\ProgramData\mm-control\live_override.txt"
+
+# 3. Ensure IBKR live connection settings are correct in config.json
+#    (live_gateway_port, live_client_id)
+
+# 4. Restart Gateway and API to connect to live IBKR Gateway port
+Restart-Service mm-ibkr-gateway
+Restart-Service mm-ibkr-api
+
+# 5. Verify via status
+.\status.ps1
+mm-control status
+```
 
 ---
 
