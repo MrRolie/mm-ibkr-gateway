@@ -166,6 +166,36 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
             logger.error(f"Error checking run window: {e}")
             return False  # Fail closed
 
+    def _build_outside_window_detail(self) -> dict:
+        next_start = None
+        next_end = None
+        try:
+            from ibkr_core.schedule import ScheduleConfig, get_next_window_end, get_next_window_start
+
+            config = ScheduleConfig(
+                start_time=self.start_time,
+                end_time=self.end_time,
+                days=self.days_str,
+                timezone=self.timezone_str,
+            )
+            next_start = get_next_window_start(config)
+            next_end = get_next_window_end(config)
+        except Exception as e:
+            logger.error(f"Error building run window detail: {e}")
+        return {
+            "error": "OUTSIDE_RUN_WINDOW",
+            "message": (
+                f"Service unavailable outside run window "
+                f"({self.start_time}-{self.end_time} {self.timezone_str} on {self.days_str})"
+            ),
+            "window_start": self.start_time,
+            "window_end": self.end_time,
+            "window_timezone": self.timezone_str,
+            "window_days": self.days_str,
+            "next_window_start": next_start.isoformat() if next_start else None,
+            "next_window_end": next_end.isoformat() if next_end else None,
+        }
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Process request with time-window check.
@@ -180,8 +210,15 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
         Raises:
             HTTPException: 503 if outside run window
         """
-        # Allow health checks and control status endpoints outside window
-        exempt_paths = ["/health", "/control/status", "/docs", "/openapi.json"]
+        # Allow health checks, UI, and status endpoints outside window
+        exempt_paths = [
+            "/health",
+            "/control/status",
+            "/admin/status",
+            "/ui",
+            "/docs",
+            "/openapi.json",
+        ]
         if any(request.url.path.startswith(path) for path in exempt_paths):
             return await call_next(request)
 
@@ -197,10 +234,7 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
             )
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    f"Service unavailable outside run window "
-                    f"({self.start_time}-{self.end_time} {self.timezone_str} on {self.days_str})"
-                ),
+                detail=self._build_outside_window_detail(),
             )
 
         return await call_next(request)

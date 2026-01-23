@@ -185,6 +185,29 @@ ibkr-gateway start-api --host 0.0.0.0 --port 8000
 - Health Check: http://localhost:8000/health
 - OpenAPI Schema: http://localhost:8000/openapi.json
 
+### Operator UI (VS Code)
+
+The operator dashboard UI is served by the API at `http://localhost:8000/ui`.
+
+Recommended VS Code extensions:
+- ms-python.python
+- ms-python.vscode-pylance
+- ms-vscode.live-preview (optional, opens the UI in an editor tab)
+
+Open the UI:
+1. Start the API server.
+2. In VS Code, run "Live Preview: Show" and navigate to `http://localhost:8000/ui`
+   (or open the URL in your browser).
+
+Set `ADMIN_TOKEN` before starting the API so admin actions work:
+
+```powershell
+$env:ADMIN_TOKEN="your-admin-token"
+python -m api.server
+```
+
+You can also set `ADMIN_TOKEN` in `.env` at the repo root.
+
 ### Global Options
 
 Apply to any command:

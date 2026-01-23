@@ -446,17 +446,41 @@ if (-not (Test-Path $venvPath)) {
             & $pythonExe -m venv $venvPath
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
+                exit 1
             } else {
                 Write-Host "Virtual environment created: $venvPath" -ForegroundColor Green
                 $venvPython = Join-Path $venvPath "Scripts\\python.exe"
                 $venvPip = Join-Path $venvPath "Scripts\\pip.exe"
                 Write-Host "Installing packages into venv..." -ForegroundColor Yellow
-                & $venvPip install --upgrade pip --quiet
-                & $venvPip install -e "$RepoRoot" --quiet
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "Package installed into venv" -ForegroundColor Green
+                
+                # Upgrade pip first
+                & $venvPip install --upgrade pip
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "ERROR: Failed to upgrade pip" -ForegroundColor Red
+                    exit 1
+                }
+                
+                # Install mm-control first (dependency for mm-ibkr-gateway)
+                $mmControlPath = Join-Path (Split-Path -Parent $RepoRoot) "mm-control"
+                if (Test-Path $mmControlPath) {
+                    Write-Host "Installing mm-control from $mmControlPath..." -ForegroundColor Yellow
+                    & $venvPip install -e "$mmControlPath"
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Host "WARNING: Failed to install mm-control - it may not be available locally" -ForegroundColor Yellow
+                    }
                 } else {
-                    Write-Host "WARN: Failed to install package into venv" -ForegroundColor Yellow
+                    Write-Host "INFO: mm-control not found at $mmControlPath - will attempt to install from PyPI" -ForegroundColor Gray
+                }
+                
+                # Install mm-ibkr-gateway and all dependencies
+                Write-Host "Installing mm-ibkr-gateway from $RepoRoot..." -ForegroundColor Yellow
+                & $venvPip install -e "$RepoRoot"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Package installed into venv successfully" -ForegroundColor Green
+                } else {
+                    Write-Host "ERROR: Failed to install mm-ibkr-gateway" -ForegroundColor Red
+                    Write-Host "Verify all dependencies are available and re-run configure.ps1" -ForegroundColor Yellow
+                    exit 1
                 }
             }
         }
@@ -627,9 +651,14 @@ Write-Host "  Config File:     $ConfigFile"
 Write-Host "  Secrets File:    $EnvFile"
 Write-Host "  Control File:    $ControlFile"
 Write-Host "  Run Window:      $RunWindowDays $RunWindowStart - $RunWindowEnd ($RunWindowTimezone)"
+Write-Host ""
+Write-Host "IMPORTANT: Time Window Enforcement" -ForegroundColor Yellow
+Write-Host "  The API enforces run_window settings via middleware." -ForegroundColor Gray
+Write-Host "  Requests outside the window (except /health) will return 503 Service Unavailable." -ForegroundColor Gray
+Write-Host "  To test outside business hours, set run_window_* to 00:00 - 23:59 and restart the service." -ForegroundColor Gray
 
 Write-Host "`nNext Steps:" -ForegroundColor Yellow
-Write-Host "  1. Run: .\setup-ibkr-autologin.ps1    (configure gateway auto-login)"
+Write-Host "  1. Run: .\setup-ibkr-autologin.ps1    (configure gateway auto-login if not done already)"
 Write-Host "  2. Run: .\generate-api-key.ps1       (create API key)"
 Write-Host "  3. Run: .\setup-firewall.ps1         (requires admin)"
 Write-Host "  4. Run: .\install-nssm.ps1           (install NSSM service manager, requires admin)"

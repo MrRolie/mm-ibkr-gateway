@@ -13,6 +13,7 @@ const CONFIG = {
 let adminToken = localStorage.getItem('adminToken') || '';
 let pollTimer = null;
 let pendingAction = null;
+let runWindowTimer = null;
 
 // DOM Elements
 const elements = {
@@ -21,6 +22,9 @@ const elements = {
     saveTokenBtn: document.getElementById('save-token-btn'),
     authStatus: document.getElementById('auth-status'),
     connectionStatus: document.getElementById('connection-status'),
+    runWindowBanner: document.getElementById('run-window-banner'),
+    runWindowMessage: document.getElementById('run-window-message'),
+    runWindowNext: document.getElementById('run-window-next'),
 
     // Status
     statusValue: document.getElementById('status-value'),
@@ -116,6 +120,139 @@ function saveToken() {
     }
 }
 
+function scheduleRunWindowClear(nextStartIso) {
+    if (runWindowTimer) {
+        clearTimeout(runWindowTimer);
+        runWindowTimer = null;
+    }
+    if (!nextStartIso) return;
+    const nextStartMs = Date.parse(nextStartIso);
+    if (Number.isNaN(nextStartMs)) return;
+    const delay = nextStartMs - Date.now();
+    if (delay <= 0) {
+        hideRunWindowBanner();
+        return;
+    }
+    runWindowTimer = setTimeout(() => {
+        hideRunWindowBanner();
+    }, delay + 1000);
+}
+
+function hideRunWindowBanner() {
+    if (!elements.runWindowBanner) return;
+    if (runWindowTimer) {
+        clearTimeout(runWindowTimer);
+        runWindowTimer = null;
+    }
+    elements.runWindowBanner.classList.add('hidden');
+}
+
+function formatWindowDays(days) {
+    if (!days) return '';
+    if (Array.isArray(days)) return days.join(', ');
+    if (typeof days === 'string') {
+        return days.split(',').map((day) => day.trim()).filter(Boolean).join(', ');
+    }
+    return '';
+}
+
+function formatDateTimeInZone(isoString, timeZone) {
+    if (!isoString) return '--';
+    try {
+        const date = new Date(isoString);
+        if (!timeZone) {
+            return date.toLocaleString();
+        }
+        return new Intl.DateTimeFormat(undefined, {
+            timeZone,
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        }).format(date);
+    } catch {
+        return isoString;
+    }
+}
+
+function showRunWindowBanner(detail) {
+    if (!elements.runWindowBanner) return;
+    const message = detail?.message || 'Service unavailable outside run window.';
+    elements.runWindowMessage.textContent = message;
+
+    const tz = detail?.window_timezone || detail?.timezone;
+    const nextStart = detail?.next_window_start;
+    const nextEnd = detail?.next_window_end;
+    const windowStart = detail?.window_start;
+    const windowEnd = detail?.window_end;
+    const windowDays = formatWindowDays(detail?.window_days);
+    const tzSuffix = tz ? ` ${tz}` : '';
+
+    if (nextStart && nextEnd) {
+        const startText = formatDateTimeInZone(nextStart, tz);
+        const endText = formatDateTimeInZone(nextEnd, tz);
+        elements.runWindowNext.textContent = `Next window: ${startText} - ${endText}${tzSuffix}`;
+        scheduleRunWindowClear(nextStart);
+    } else if (windowStart && windowEnd) {
+        const daysSuffix = windowDays ? ` on ${windowDays}` : '';
+        elements.runWindowNext.textContent = `Window hours: ${windowStart}-${windowEnd}${tzSuffix}${daysSuffix}`;
+    } else {
+        elements.runWindowNext.textContent = '';
+    }
+
+    elements.runWindowBanner.classList.remove('hidden');
+}
+
+function getRunWindowDetail(data) {
+    if (!data) return { message: 'Service unavailable outside run window.' };
+    const detail = data.detail ?? data;
+    if (typeof detail === 'string') {
+        return { message: detail };
+    }
+    if (detail && typeof detail === 'object') {
+        return detail;
+    }
+    if (typeof data.message === 'string') {
+        return { message: data.message };
+    }
+    return { message: 'Service unavailable outside run window.' };
+}
+
+function isOutsideRunWindowError(data, response) {
+    if (!response || response.status !== 503) return false;
+    const detail = data?.detail;
+    if (typeof detail === 'string') {
+        return detail.toLowerCase().includes('outside run window');
+    }
+    if (detail && typeof detail === 'object') {
+        if (detail.error === 'OUTSIDE_RUN_WINDOW') return true;
+        if (typeof detail.message === 'string') {
+            return detail.message.toLowerCase().includes('outside run window');
+        }
+    }
+    if (typeof data?.message === 'string') {
+        return data.message.toLowerCase().includes('outside run window');
+    }
+    return false;
+}
+
+function getErrorMessage(data, response) {
+    if (data) {
+        if (typeof data.detail === 'string') {
+            return data.detail;
+        }
+        if (data.detail && typeof data.detail === 'object' && typeof data.detail.message === 'string') {
+            return data.detail.message;
+        }
+        if (typeof data.message === 'string') {
+            return data.message;
+        }
+    }
+    return `HTTP ${response?.status || 'error'}`;
+}
+
 // API Calls
 async function apiCall(endpoint, options = {}) {
     const url = `${CONFIG.apiBaseUrl}${endpoint}`;
@@ -126,10 +263,18 @@ async function apiCall(endpoint, options = {}) {
 
     try {
         const response = await fetch(url, { ...options, headers });
-        const data = await response.json();
+        let data = null;
+        try {
+            data = await response.json();
+        } catch {
+            data = null;
+        }
 
         if (!response.ok) {
-            throw new Error(data.detail?.message || data.message || `HTTP ${response.status}`);
+            if (isOutsideRunWindowError(data, response)) {
+                showRunWindowBanner(getRunWindowDetail(data));
+            }
+            throw new Error(getErrorMessage(data, response));
         }
 
         return data;

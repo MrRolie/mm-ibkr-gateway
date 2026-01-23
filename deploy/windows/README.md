@@ -324,6 +324,7 @@ Both API and Gateway run as Windows services managed by NSSM (Non-Sucking Servic
 - Services run 24/7, managed by NSSM
 - API middleware checks time window on each request
 - Returns HTTP 503 Service Unavailable outside window
+- UI (`/ui`) and `/admin/status` are exempt so operators can view status outside the window
 - No external polling or process management needed
 
 ---

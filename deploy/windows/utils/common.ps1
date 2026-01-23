@@ -57,7 +57,7 @@ function Import-GatewayConfig {
     try {
         return Get-Content -Path $path -Raw | ConvertFrom-Json
     } catch {
-        Write-Warning "Failed to read config.json at $path: $_"
+        Write-Warning "Failed to read config.json at ${path}: $_"
         return $null
     }
 }

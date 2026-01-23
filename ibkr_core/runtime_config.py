@@ -186,7 +186,8 @@ def load_config_data(create_if_missing: bool = False) -> Dict[str, Any]:
         return _default_config()
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        # Handle Windows-generated UTF-8 with BOM (UTF-8-SIG) from PowerShell Set-Content
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(raw, dict):
             raise ValueError("config.json root must be an object")
         return _normalize_config(raw)

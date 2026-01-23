@@ -49,6 +49,31 @@ header h1 {
     font-weight: 600;
 }
 
+/* Banner */
+.banner {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+.banner-title {
+    font-weight: 600;
+    color: var(--color-warning);
+    margin-bottom: 4px;
+}
+
+.banner-body {
+    color: var(--color-text);
+    font-size: 0.9rem;
+}
+
+.banner-body div + div {
+    margin-top: 4px;
+}
+
 /* Cards */
 .card {
     background: var(--color-card);
