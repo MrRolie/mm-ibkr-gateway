@@ -254,6 +254,69 @@ function Test-IsAdmin {
     return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Stop-ServiceWithWait {
+    <#
+    .SYNOPSIS
+        Stop a service and wait for it to reach Stopped.
+
+    .PARAMETER Name
+        Service name.
+
+    .PARAMETER TimeoutSeconds
+        Max seconds to wait for stop.
+
+    .PARAMETER NssmPath
+        Optional NSSM path to request stop for NSSM-managed services.
+
+    .OUTPUTS
+        Boolean - True if stopped or not found; False if still running after timeout.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [int]$TimeoutSeconds = 60,
+        [string]$NssmPath
+    )
+
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $service) {
+        return $true
+    }
+
+    if ($service.Status -eq 'Stopped') {
+        return $true
+    }
+
+    if ($service.Status -ne 'StopPending') {
+        if ($NssmPath -and (Test-Path $NssmPath)) {
+            & $NssmPath stop $Name *>$null
+        } else {
+            Stop-Service -Name $Name -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $service.Refresh()
+        } catch {
+            break
+        }
+
+        if ($service.Status -eq 'Stopped') {
+            return $true
+        }
+
+        Start-Sleep -Seconds 1
+    }
+
+    try {
+        $service.Refresh()
+    } catch {}
+
+    return ($service.Status -eq 'Stopped')
+}
+
 function Get-RestartState {
     <#
     .SYNOPSIS

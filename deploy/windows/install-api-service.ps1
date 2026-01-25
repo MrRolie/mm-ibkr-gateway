@@ -93,8 +93,11 @@ if ($Force) {
     $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($existingService) {
         Write-Verbose "Stopping service $ServiceName"
-        & $NssmPath stop $ServiceName 2>$null
-        Start-Sleep -Seconds 2
+        $stopped = Stop-ServiceWithWait -Name $ServiceName -TimeoutSeconds 60 -NssmPath $NssmPath
+        if (-not $stopped) {
+            Write-Error "Timed out waiting for service $ServiceName to stop. Stop it manually and re-run."
+            exit 1
+        }
         
         Write-Verbose "Removing service $ServiceName"
         & $NssmPath remove $ServiceName confirm 2>$null
