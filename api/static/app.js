@@ -1,5 +1,5 @@
 /**
- * MM-Control Operator Dashboard
+ * IBKR Gateway Operator Dashboard
  * Client-side JavaScript for trading control UI
  */
 
