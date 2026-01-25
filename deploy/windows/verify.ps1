@@ -37,7 +37,7 @@ $apiPort = [int](Get-GatewayConfigValue $config "api_port" 8000)
 $apiHost = Get-GatewayConfigValue $config "api_bind_host" "127.0.0.1"
 $paperPort = [int](Get-GatewayConfigValue $config "paper_gateway_port" 4002)
 $livePort = [int](Get-GatewayConfigValue $config "live_gateway_port" 4001)
-$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlBaseDir = Get-GatewayConfigValue $config "control_dir" "C:\ProgramData\mm-ibkr-gateway"
 $controlFile = Join-Path $controlBaseDir "control.json"
 $tradingMode = "paper"
 if (Test-Path $controlFile) {

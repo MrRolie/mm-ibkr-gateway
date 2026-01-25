@@ -8,6 +8,7 @@ Run these tests:
     pytest tests/test_orders_safety.py -v
 """
 
+import json
 import os
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -15,6 +16,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
 from ibkr_core.config import TradingDisabledError, reset_config
+from ibkr_core.control import ControlState, get_control_path, write_control
 from ibkr_core.models import OrderSpec, Quote, SymbolSpec
 from ibkr_core.orders import (
     OrderRegistry,
@@ -59,6 +61,42 @@ def reset_environment():
             os.environ[key] = value
         elif key in os.environ:
             del os.environ[key]
+    reset_config()
+
+
+def set_control_state(
+    *,
+    trading_mode: str = "paper",
+    orders_enabled: bool = False,
+    live_trading_override_file: str | None = None,
+) -> None:
+    """Write control.json for tests and reset config."""
+    write_control(
+        ControlState(
+            trading_mode=trading_mode,
+            orders_enabled=orders_enabled,
+            live_trading_override_file=live_trading_override_file,
+        ),
+        base_dir=get_control_path().parent,
+    )
+    reset_config()
+
+
+def write_raw_control(trading_mode: str, orders_enabled) -> None:
+    """Write raw control.json for parsing tests."""
+    control_path = get_control_path()
+    control_path.parent.mkdir(parents=True, exist_ok=True)
+    control_path.write_text(
+        json.dumps(
+            {
+                "trading_mode": trading_mode,
+                "orders_enabled": orders_enabled,
+                "dry_run": True,
+                "live_trading_override_file": None,
+            }
+        ),
+        encoding="utf-8",
+    )
     reset_config()
 
 
@@ -140,10 +178,7 @@ class TestOrdersDisabled:
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that place_order returns SIMULATED status when ORDERS_ENABLED=false."""
-        # Set ORDERS_ENABLED=false
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         # Mock the resolve_contract and get_quote functions
         with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):
@@ -154,16 +189,13 @@ class TestOrdersDisabled:
         assert result.status == "SIMULATED"
         assert result.orderId is None
         assert len(result.errors) > 0
-        assert "ORDERS_ENABLED=false" in result.errors[0]
+        assert "orders_enabled=false" in result.errors[0].lower()
 
     def test_place_order_does_not_call_placeOrder_when_disabled(
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that IBKR placeOrder is never called when ORDERS_ENABLED=false."""
-        # Set ORDERS_ENABLED=false
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         # Mock the resolve_contract and get_quote functions
         with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):
@@ -180,10 +212,7 @@ class TestOrdersDisabled:
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that preview_order still works when ORDERS_ENABLED=false."""
-        # Set ORDERS_ENABLED=false
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         # Mock the resolve_contract and get_quote functions
         with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):
@@ -199,9 +228,7 @@ class TestOrdersDisabled:
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that simulated OrderResult has correct structure."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):
             with patch("ibkr_core.orders.get_quote", return_value=mock_quote):
@@ -219,9 +246,7 @@ class TestOrdersDisabled:
         self, mock_client, valid_symbol_spec, mock_quote, mock_contract
     ):
         """Test that multiple orders all return SIMULATED when disabled."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         orders = [
             OrderSpec(
@@ -263,10 +288,7 @@ class TestOrdersEnabled:
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that IBKR placeOrder is called when ORDERS_ENABLED=true."""
-        # Set ORDERS_ENABLED=true
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=True)
 
         # Create a mock trade
         mock_trade = MagicMock()
@@ -301,9 +323,7 @@ class TestOrdersEnabled:
         self, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
         """Test that successful order placement returns ACCEPTED status."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=True)
 
         # Create a mock trade
         mock_trade = MagicMock()
@@ -442,9 +462,7 @@ class TestValidationRejection:
 
     def test_invalid_order_rejected_without_ibkr_call(self, mock_client, valid_symbol_spec):
         """Test that validation errors prevent IBKR call."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=True)
 
         # Create invalid order - MKT with limit price
         invalid_order = OrderSpec(
@@ -468,9 +486,7 @@ class TestValidationRejection:
 
     def test_missing_limit_price_rejected(self, mock_client, valid_symbol_spec):
         """Test that LMT order without limit price is rejected."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=True)
 
         invalid_order = OrderSpec(
             instrument=valid_symbol_spec,
@@ -493,8 +509,8 @@ class TestValidationRejection:
 # =============================================================================
 
 
-class TestEnvironmentVariableParsing:
-    """Test parsing of ORDERS_ENABLED environment variable."""
+class TestControlParsing:
+    """Test parsing of orders_enabled values in control.json."""
 
     @pytest.mark.parametrize(
         "value,expected",
@@ -518,10 +534,8 @@ class TestEnvironmentVariableParsing:
     def test_orders_enabled_parsing(
         self, value, expected, mock_client, valid_order_spec, mock_quote, mock_contract
     ):
-        """Test various ORDERS_ENABLED values."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = value
-        reset_config()
+        """Test various orders_enabled values."""
+        write_raw_control("paper", value)
 
         # Setup mock for enabled case
         if expected:
@@ -568,9 +582,7 @@ class TestSafetyLogging:
         """Test that simulated orders are logged."""
         import logging
 
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "false"
-        reset_config()
+        set_control_state(trading_mode="paper", orders_enabled=False)
 
         with caplog.at_level(logging.INFO):
             with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):

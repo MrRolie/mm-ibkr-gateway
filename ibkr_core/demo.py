@@ -84,7 +84,7 @@ def validate_paper_mode() -> bool:
         config = get_config()
         if config.trading_mode != "paper":
             print_error(f"Demo requires trading_mode=paper (control.json). Current mode: {config.trading_mode}")
-            print_info("Solution", "Set trading_mode=paper in control.json (mm-control)")
+            print_info("Solution", "Set trading_mode=paper in control.json")
             return False
         return True
     except InvalidConfigError as e:

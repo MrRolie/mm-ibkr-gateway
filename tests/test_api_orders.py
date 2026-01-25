@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ibkr_core.control import ControlState, get_control_path, write_control
 from ibkr_core.client import ConnectionError as IBKRConnectionError
 
 
@@ -23,12 +24,15 @@ from ibkr_core.client import ConnectionError as IBKRConnectionError
 def reset_env():
     """Reset environment before each test."""
     os.environ["TRADING_MODE"] = "paper"
-    os.environ["ORDERS_ENABLED"] = "false"
     os.environ.pop("API_KEY", None)
 
     from ibkr_core.config import reset_config
 
     reset_config()
+    write_control(
+        ControlState(trading_mode="paper", orders_enabled=True),
+        base_dir=get_control_path().parent,
+    )
     yield
     reset_config()
 
@@ -371,7 +375,10 @@ class TestOrdersIntegration:
 
     def test_place_order_simulated_integration(self, integration_client):
         """Place order returns SIMULATED when disabled."""
-        os.environ["ORDERS_ENABLED"] = "false"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=False),
+            base_dir=get_control_path().parent,
+        )
         from ibkr_core.config import reset_config
 
         reset_config()
@@ -402,8 +409,10 @@ class TestOrdersIntegration:
     )
     def test_place_and_cancel_order_integration(self, integration_client):
         """Place and cancel a real order (paper trading only)."""
-        os.environ["ORDERS_ENABLED"] = "true"
-        os.environ["TRADING_MODE"] = "paper"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=True),
+            base_dir=get_control_path().parent,
+        )
         from ibkr_core.config import reset_config
 
         reset_config()

@@ -9,12 +9,14 @@ Tests:
   - Invalid configuration detection
 """
 
+import json
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
+from ibkr_core.control import ControlState, get_control_path, write_control
 from ibkr_core.config import (
     Config,
     InvalidConfigError,
@@ -54,6 +56,7 @@ def reset_config_fixture():
     config_path = Path(temp_dir.name) / "config.json"
     os.environ["MM_IBKR_CONFIG_PATH"] = str(config_path)
     load_config_data(create_if_missing=True)
+    write_control(ControlState(), base_dir=get_control_path().parent)
 
     yield
 
@@ -93,26 +96,55 @@ class TestTradingMode:
 
     def test_valid_paper_mode(self):
         """Test that paper mode is valid."""
-        os.environ["TRADING_MODE"] = "paper"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=False),
+            base_dir=get_control_path().parent,
+        )
         config = load_config()
         assert config.trading_mode == "paper"
 
     def test_valid_live_mode(self):
         """Test that live mode is valid (with orders disabled)."""
-        os.environ["TRADING_MODE"] = "live"
-        os.environ["ORDERS_ENABLED"] = "false"
+        write_control(
+            ControlState(trading_mode="live", orders_enabled=False),
+            base_dir=get_control_path().parent,
+        )
         config = load_config()
         assert config.trading_mode == "live"
 
-    def test_invalid_trading_mode(self):
-        """Test that invalid TRADING_MODE raises InvalidConfigError."""
-        os.environ["TRADING_MODE"] = "invalid"
-        with pytest.raises(InvalidConfigError, match="TRADING_MODE must be"):
-            load_config()
+    def test_invalid_trading_mode_coerces_to_paper(self):
+        """Test that invalid trading_mode coerces to paper."""
+        control_path = get_control_path()
+        control_path.parent.mkdir(parents=True, exist_ok=True)
+        control_path.write_text(
+            json.dumps(
+                {
+                    "trading_mode": "invalid",
+                    "orders_enabled": False,
+                    "dry_run": True,
+                    "live_trading_override_file": None,
+                }
+            ),
+            encoding="utf-8",
+        )
+        config = load_config()
+        assert config.trading_mode == "paper"
 
     def test_trading_mode_case_insensitive(self):
         """Test that TRADING_MODE is case-insensitive."""
-        os.environ["TRADING_MODE"] = "PAPER"
+        control_path = get_control_path()
+        control_path.parent.mkdir(parents=True, exist_ok=True)
+        control_path.write_text(
+            json.dumps(
+                {
+                    "trading_mode": "PAPER",
+                    "orders_enabled": False,
+                    "dry_run": True,
+                    "live_trading_override_file": None,
+                }
+            ),
+            encoding="utf-8",
+        )
         config = load_config()
         assert config.trading_mode == "paper"
 
@@ -122,28 +154,64 @@ class TestOrdersEnabled:
 
     def test_orders_enabled_false(self):
         """Test that ORDERS_ENABLED=false is parsed correctly."""
-        os.environ["ORDERS_ENABLED"] = "false"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=False),
+            base_dir=get_control_path().parent,
+        )
         config = load_config()
         assert config.orders_enabled is False
 
     def test_orders_enabled_true(self):
         """Test that ORDERS_ENABLED=true is parsed correctly."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
+        control_path = get_control_path()
+        control_path.parent.mkdir(parents=True, exist_ok=True)
+        control_path.write_text(
+            json.dumps(
+                {
+                    "trading_mode": "paper",
+                    "orders_enabled": "true",
+                    "dry_run": True,
+                    "live_trading_override_file": None,
+                }
+            ),
+            encoding="utf-8",
+        )
         config = load_config()
         assert config.orders_enabled is True
 
     def test_orders_enabled_yes(self):
         """Test that ORDERS_ENABLED=yes is parsed as true."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "yes"
+        control_path = get_control_path()
+        control_path.parent.mkdir(parents=True, exist_ok=True)
+        control_path.write_text(
+            json.dumps(
+                {
+                    "trading_mode": "paper",
+                    "orders_enabled": "yes",
+                    "dry_run": True,
+                    "live_trading_override_file": None,
+                }
+            ),
+            encoding="utf-8",
+        )
         config = load_config()
         assert config.orders_enabled is True
 
     def test_orders_enabled_1(self):
         """Test that ORDERS_ENABLED=1 is parsed as true."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "1"
+        control_path = get_control_path()
+        control_path.parent.mkdir(parents=True, exist_ok=True)
+        control_path.write_text(
+            json.dumps(
+                {
+                    "trading_mode": "paper",
+                    "orders_enabled": "1",
+                    "dry_run": True,
+                    "live_trading_override_file": None,
+                }
+            ),
+            encoding="utf-8",
+        )
         config = load_config()
         assert config.orders_enabled is True
 
@@ -153,10 +221,12 @@ class TestLiveTradingOverride:
 
     def test_live_mode_with_orders_enabled_requires_override(self):
         """Test that live mode + orders enabled requires override file."""
-        os.environ["TRADING_MODE"] = "live"
-        os.environ["ORDERS_ENABLED"] = "true"
+        write_control(
+            ControlState(trading_mode="live", orders_enabled=True),
+            base_dir=get_control_path().parent,
+        )
 
-        with pytest.raises(InvalidConfigError, match="LIVE_TRADING_OVERRIDE_FILE"):
+        with pytest.raises(InvalidConfigError, match="override"):
             load_config()
 
     def test_live_mode_with_orders_enabled_and_override_file(self):
@@ -166,9 +236,14 @@ class TestLiveTradingOverride:
             override_path = f.name
 
         try:
-            os.environ["TRADING_MODE"] = "live"
-            os.environ["ORDERS_ENABLED"] = "true"
-            os.environ["LIVE_TRADING_OVERRIDE_FILE"] = override_path
+            write_control(
+                ControlState(
+                    trading_mode="live",
+                    orders_enabled=True,
+                    live_trading_override_file=override_path,
+                ),
+                base_dir=get_control_path().parent,
+            )
 
             config = load_config()
             assert config.trading_mode == "live"
@@ -182,7 +257,10 @@ class TestTradingDisabledError:
 
     def test_check_trading_enabled_raises_when_disabled(self):
         """Test that check_trading_enabled raises when orders are disabled."""
-        os.environ["ORDERS_ENABLED"] = "false"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=False),
+            base_dir=get_control_path().parent,
+        )
         config = load_config()
 
         with pytest.raises(TradingDisabledError):
@@ -190,8 +268,10 @@ class TestTradingDisabledError:
 
     def test_check_trading_enabled_ok_when_enabled(self):
         """Test that check_trading_enabled does not raise when orders are enabled."""
-        os.environ["TRADING_MODE"] = "paper"
-        os.environ["ORDERS_ENABLED"] = "true"
+        write_control(
+            ControlState(trading_mode="paper", orders_enabled=True),
+            base_dir=get_control_path().parent,
+        )
         config = load_config()
 
         # Should not raise

@@ -122,6 +122,26 @@ header h1 {
     color: var(--color-success);
 }
 
+/* Trading Mode Badge */
+.mode-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.mode-badge.paper {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.mode-badge.live {
+    background-color: #fee2e2;
+    color: var(--color-danger);
+}
+
 /* Status Display */
 .status-indicator {
     display: flex;
@@ -206,11 +226,6 @@ header h1 {
     font-size: 0.75rem;
 }
 
-.btn-large {
-    padding: 12px 24px;
-    font-size: 1rem;
-}
-
 /* Form Elements */
 .form-group {
     margin-bottom: 16px;
@@ -241,22 +256,21 @@ select:focus {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* Control Buttons Layout */
-.control-buttons {
+.inline-group {
     display: flex;
     gap: 16px;
-    margin-bottom: 16px;
+    flex-wrap: wrap;
 }
 
-.disable-group {
+.checkbox-label {
     display: flex;
+    align-items: center;
     gap: 8px;
-    align-items: stretch;
+    font-weight: 500;
 }
 
-.ttl-selector {
+.checkbox-label input[type="checkbox"] {
     width: auto;
-    min-width: 120px;
 }
 
 /* Audit Log */
@@ -389,15 +403,8 @@ select:focus {
 
 /* Responsive */
 @media (max-width: 600px) {
-    .control-buttons {
+    .inline-group {
         flex-direction: column;
-    }
-
-    .disable-group {
-        flex-direction: column;
-    }
-
-    .btn-large {
-        width: 100%;
+        align-items: flex-start;
     }
 }

@@ -343,27 +343,9 @@ async def lifespan_context(app):
     """
     Lifespan context manager for FastAPI.
 
-    Handles startup and shutdown of IBKR client and mm-control TTL monitor.
+    Handles startup and shutdown of IBKR client resources.
     """
     logger.info("API server starting up")
-
-    # Start mm-control TTL monitor (background thread)
-    try:
-        from mm_control import start_ttl_monitor
-
-        config = get_config()
-        if config.mm_control_enable_background_monitor:
-            check_interval = config.mm_control_ttl_check_interval
-            logger.info(f"Starting mm-control TTL monitor (check interval: {check_interval}s)")
-
-            def on_ttl_revert():
-                logger.info("TTL expired - trading auto-enabled by mm-control")
-
-            start_ttl_monitor(check_interval_seconds=check_interval, on_revert=on_ttl_revert)
-        else:
-            logger.info("mm-control TTL monitor disabled via config")
-    except ImportError:
-        logger.debug("mm-control not installed - TTL monitor not started")
 
     # Optional: Pre-connect to IBKR on startup
     # Uncomment if you want eager connection
@@ -376,15 +358,6 @@ async def lifespan_context(app):
 
     # Cleanup on shutdown
     logger.info("API server shutting down")
-
-    # Stop mm-control TTL monitor
-    try:
-        from mm_control import stop_ttl_monitor
-
-        logger.info("Stopping mm-control TTL monitor")
-        stop_ttl_monitor()
-    except ImportError:
-        pass
 
     await _client_manager.disconnect()
     logger.info("IBKR client disconnected")

@@ -10,7 +10,7 @@ Provides:
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -178,6 +178,11 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle uncaught exceptions."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
     return JSONResponse(
         status_code=500,
         content=ErrorResponse(
@@ -185,6 +190,14 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
             message=f"Internal server error: {type(exc).__name__}",
             details={"error": str(exc)},
         ).model_dump(exclude_none=True),
+    )
+
+
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Preserve HTTPException responses with their intended status and detail."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
     )
 
 

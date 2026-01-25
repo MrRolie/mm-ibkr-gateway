@@ -95,6 +95,25 @@ function Find-IBKRGateway {
     return $null
 }
 
+
+function Ensure-Tzdata {
+    param([string]$VenvPath)
+
+    $pipExe = Join-Path $VenvPath "Scripts\\pip.exe"
+    if (-not (Test-Path $pipExe)) {
+        return
+    }
+
+    & $pipExe show tzdata | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Installing tzdata (Windows time zone database)..." -ForegroundColor Yellow
+        & $pipExe install tzdata
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "WARNING: Failed to install tzdata; run window checks may fail." -ForegroundColor Yellow
+        }
+    }
+}
+
 # Step 1: Repository Path
 Write-Host "Step 1: Repository Path" -ForegroundColor Yellow
 Write-Host "Detected: $RepoRoot"
@@ -111,7 +130,8 @@ Write-Host "Step 2: Network Configuration" -ForegroundColor Yellow
 $detectedIP = Get-LanIP
 Write-Host "Detected LAN IP: $detectedIP"
 
-$LanIP = Read-HostWithDefault -Prompt "Laptop LAN IP (API will bind to this)" -Default $detectedIP -Required
+$defaultBindHost = "127.0.0.1"
+$LanIP = Read-HostWithDefault -Prompt "API bind host (default ${defaultBindHost}; detected LAN IP: ${detectedIP})" -Default $defaultBindHost -Required
 $AllowedIPs = Read-HostWithDefault -Prompt "Allowed remote IPs/CIDR for inbound API (comma-separated)" -Default "127.0.0.1"
 $ApiPort = Read-HostWithDefault -Prompt "API Port" -Default "8000"
 Write-Host ""
@@ -178,27 +198,19 @@ $RunWindowDays = Read-HostWithDefault -Prompt "Active days (comma-separated)" -D
 $RunWindowTimezone = Read-HostWithDefault -Prompt "Timezone" -Default "America/Toronto"
 Write-Host ""
 
-# Step 8: mm-control Configuration
-Write-Host "Step 8: mm-control Integration" -ForegroundColor Yellow
-Write-Host "mm-control provides centralized trading control (guard file + toggle store)." -ForegroundColor Gray
-Write-Host "Default location: C:\ProgramData\mm-control" -ForegroundColor Gray
-$defaultMMControlBase = "C:\ProgramData\mm-control"
-$MMControlBaseDir = Read-HostWithDefault -Prompt "mm-control base directory" -Default $defaultMMControlBase -Required
-
-Write-Host ""
-Write-Host "Enable background TTL monitor in API?" -ForegroundColor Gray
-Write-Host "  This allows automatic re-enabling of trading when TTL expires." -ForegroundColor Gray
-$enableMonitor = Read-HostWithDefault -Prompt "Enable TTL monitor? (Y/n)" -Default "Y"
-$MMControlEnableMonitor = if ($enableMonitor -eq "Y" -or $enableMonitor -eq "y") { "true" } else { "false" }
-
-$MMControlCheckInterval = Read-HostWithDefault -Prompt "TTL check interval (seconds)" -Default "30"
+# Step 8: Trading Control
+Write-Host "Step 8: Trading Control" -ForegroundColor Yellow
+Write-Host "Trading controls are managed via control.json (mm-ibkr-gateway)." -ForegroundColor Gray
+Write-Host "Default location: C:\ProgramData\mm-ibkr-gateway" -ForegroundColor Gray
+$defaultControlDir = "C:\ProgramData\mm-ibkr-gateway"
+$ControlDir = Read-HostWithDefault -Prompt "Control.json directory" -Default $defaultControlDir -Required
 Write-Host ""
 
 # Step 9: Safety Confirmation
 Write-Host "Step 9: Safety Settings" -ForegroundColor Yellow
 Write-Host "SAFETY: Trading controls are managed via control.json (centralized)" -ForegroundColor Green
 Write-Host "Default: Paper mode, orders DISABLED, dry-run enabled." -ForegroundColor Green
-Write-Host "Use mm-control CLI or set-control.ps1 to change trading settings." -ForegroundColor Gray
+Write-Host "Use the UI (/ui) or /admin/control to change trading settings." -ForegroundColor Gray
 Write-Host ""
 
 # Create directories
@@ -459,19 +471,7 @@ if (-not (Test-Path $venvPath)) {
                     Write-Host "ERROR: Failed to upgrade pip" -ForegroundColor Red
                     exit 1
                 }
-                
-                # Install mm-control first (dependency for mm-ibkr-gateway)
-                $mmControlPath = Join-Path (Split-Path -Parent $RepoRoot) "mm-control"
-                if (Test-Path $mmControlPath) {
-                    Write-Host "Installing mm-control from $mmControlPath..." -ForegroundColor Yellow
-                    & $venvPip install -e "$mmControlPath"
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Host "WARNING: Failed to install mm-control - it may not be available locally" -ForegroundColor Yellow
-                    }
-                } else {
-                    Write-Host "INFO: mm-control not found at $mmControlPath - will attempt to install from PyPI" -ForegroundColor Gray
-                }
-                
+
                 # Install mm-ibkr-gateway and all dependencies
                 Write-Host "Installing mm-ibkr-gateway from $RepoRoot..." -ForegroundColor Yellow
                 & $venvPip install -e "$RepoRoot"
@@ -488,6 +488,8 @@ if (-not (Test-Path $venvPath)) {
 } else {
     Write-Host "Virtual environment already present at: $venvPath" -ForegroundColor Gray
 }
+
+Ensure-Tzdata -VenvPath $venvPath
 # ProgramData directory for state
 $StateDir = "C:\ProgramData\mm-ibkr-gateway"
 if (-not (Test-Path $StateDir)) {
@@ -495,13 +497,12 @@ if (-not (Test-Path $StateDir)) {
     Write-Host "  Created: $StateDir"
 }
 
-# Check control.json created by mm-control
+# Check control.json location
 Write-Host "`nChecking control.json..." -ForegroundColor Cyan
-$ControlDir = $MMControlBaseDir
 $ControlFile = Join-Path $ControlDir "control.json"
 if (-not (Test-Path $ControlFile)) {
     Write-Host "  Missing: $ControlFile" -ForegroundColor Yellow
-    Write-Host "  Run mm-control\\scripts\\set-control.ps1 to create and configure." -ForegroundColor Yellow
+    Write-Host "  The API will create a default control.json on first start." -ForegroundColor Yellow
 } else {
     Write-Host "  Found: $ControlFile" -ForegroundColor Gray
     try {
@@ -542,9 +543,7 @@ $configData = @{
     log_dir = $LogDir
     audit_db_path = $AuditDbPath
     watchdog_log_dir = $WatchdogLogDir
-    mm_control_base_dir = $MMControlBaseDir
-    mm_control_enable_background_monitor = ($MMControlEnableMonitor -eq "true")
-    mm_control_ttl_check_interval = [int]$MMControlCheckInterval
+    control_dir = $ControlDir
     run_window_start = $RunWindowStart
     run_window_end = $RunWindowEnd
     run_window_days = $RunWindowDays

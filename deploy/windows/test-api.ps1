@@ -107,9 +107,9 @@ try {
         exit 0
     }
     elseif ($statusCode -eq 403) {
-        Write-Host "`nTrading is disabled via mm-control." -ForegroundColor Yellow
-        Write-Host "Check: C:\ProgramData\mm-control\TRADING_DISABLED" -ForegroundColor Gray
-        Write-Host "Enable with: cd C:\Users\mikae\Coding Projects\mm-control\scripts; .\enable-trading.ps1" -ForegroundColor Cyan
+        Write-Host "`nTrading is disabled in control.json." -ForegroundColor Yellow
+        Write-Host "Check: C:\ProgramData\mm-ibkr-gateway\control.json" -ForegroundColor Gray
+        Write-Host "Enable via the UI (/ui) or the /admin/control endpoint." -ForegroundColor Cyan
     }
     elseif ($statusCode -eq 401) {
         Write-Host "`nAPI key authentication failed." -ForegroundColor Yellow

@@ -215,6 +215,8 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
             "/health",
             "/control/status",
             "/admin/status",
+            "/admin/audit-log",
+            "/admin/control",
             "/ui",
             "/docs",
             "/openapi.json",
@@ -225,7 +227,7 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
         # Check if we're in the run window
         if not self.is_in_run_window():
             logger.warning(
-                f"Request rejected: outside run window",
+                "Request rejected: outside run window",
                 extra={
                     "path": str(request.url.path),
                     "method": request.method,
@@ -242,10 +244,10 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
 
 class TradingDisabledMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that checks mm-control trading disabled status.
+    Middleware that checks control.json trading disabled status.
 
     Returns 403 Forbidden for order-related endpoints when trading is disabled
-    via mm-control guard file or toggle store.
+    via control.json.
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -264,25 +266,40 @@ class TradingDisabledMiddleware(BaseHTTPMiddleware):
         """
         # Only check on order endpoints (POST/PUT)
         if "/orders" in request.url.path and request.method in ["POST", "PUT"]:
-            try:
-                from mm_control import is_trading_disabled
+            from ibkr_core.control import load_control, validate_control
 
-                if is_trading_disabled():
-                    logger.warning(
-                        f"Order request rejected: trading is disabled via mm-control",
-                        extra={
-                            "path": str(request.url.path),
-                            "method": request.method,
-                        },
-                    )
-                    raise HTTPException(
-                        status_code=403,
-                        detail=(
-                            "Trading is disabled via mm-control. "
-                            "Check C:\\ProgramData\\mm-control for details."
-                        ),
-                    )
-            except ImportError:
-                logger.debug("mm-control not installed - guard file check skipped")
+            state = load_control()
+            validation_errors = validate_control(state)
+
+            if not state.orders_enabled:
+                logger.warning(
+                    "Order request rejected: orders disabled in control.json",
+                    extra={
+                        "path": str(request.url.path),
+                        "method": request.method,
+                    },
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="Orders are disabled in control.json (orders_enabled=false).",
+                )
+
+            if validation_errors:
+                logger.warning(
+                    "Order request rejected: invalid control.json settings",
+                    extra={
+                        "path": str(request.url.path),
+                        "method": request.method,
+                        "validation_errors": validation_errors,
+                    },
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "INVALID_CONTROL_SETTINGS",
+                        "message": "Control.json validation failed for order placement.",
+                        "validation_errors": validation_errors,
+                    },
+                )
 
         return await call_next(request)

@@ -31,11 +31,14 @@ This system is **SAFE BY DEFAULT**:
 
 We **strongly recommend** staying in paper mode. If you must enable live trading:
 
-1. Create an override file: `New-Item -Path "C:\ProgramData\mm-control\live_override.txt" -ItemType File`
-2. Update `control.json` via mm-control:
+1. Create an override file: `New-Item -Path "C:\ProgramData\mm-ibkr-gateway\live_override.txt" -ItemType File`
+2. Update `control.json` via the operator UI or /admin/control:
    ```powershell
-   cd C:\Users\mikae\Coding Projects\mm-control\scripts
-   .\set-control.ps1 -TradingMode live -OrdersEnabled $true -DryRun $false -OverrideFile "C:\ProgramData\mm-control\live_override.txt"
+   # Example API call from the same machine
+   curl -X PUT http://localhost:8000/admin/control `
+     -H "X-Admin-Token: YOUR_TOKEN" `
+     -H "Content-Type: application/json" `
+     -d '{"reason":"Enable live trading","trading_mode":"live","orders_enabled":true,"dry_run":false,"live_trading_override_file":"C:\\ProgramData\\mm-ibkr-gateway\\live_override.txt"}'
    ```
 
 **WARNING**: Once enabled, the system can place REAL orders with REAL money.
@@ -429,7 +432,7 @@ pip install -e .
    }
    ```
 
-2. Trading controls live in `C:\ProgramData\mm-control\control.json` (use `mm-control` or `set-control.ps1`).
+2. Trading controls live in `C:\ProgramData\mm-ibkr-gateway\control.json` (use the operator UI or `PUT /admin/control`).
 
 3. (Optional) create `.env` for secrets:
 
@@ -692,7 +695,7 @@ Integration tests run manually due to IBKR connection requirements.
 ## Runtime Configuration
 
 Operational settings load from `config.json` (ProgramData on Windows, override with `MM_IBKR_CONFIG_PATH`).
-Trading controls load from `control.json` (mm-control).
+Trading controls load from `control.json` (mm-ibkr-gateway).
 
 ### Environment Variables (Secrets and Tooling)
 

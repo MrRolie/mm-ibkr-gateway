@@ -1,5 +1,5 @@
 """
-Admin API endpoints for mm-control trading toggle management.
+Admin API endpoints for trading control management.
 
 These endpoints provide a secure local admin API for operators to manage
 trading state via HTTP rather than PowerShell scripts.
@@ -10,29 +10,31 @@ Security:
 - All actions logged to audit trail
 
 Usage:
-    # Enable trading
-    curl -X POST http://localhost:8000/admin/toggle \
+    # Update control.json settings
+    curl -X PUT http://localhost:8000/admin/control \
         -H "X-Admin-Token: YOUR_TOKEN" \
         -H "Content-Type: application/json" \
-        -d '{"action": "enable", "reason": "Maintenance complete"}'
-
-    # Disable trading with TTL
-    curl -X POST http://localhost:8000/admin/toggle \
-        -H "X-Admin-Token: YOUR_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{"action": "disable", "reason": "Market volatility", "ttl_minutes": 30}'
+        -d '{"reason": "Maintenance complete", "orders_enabled": true}'
 """
 
 import logging
 import os
-from enum import Enum
-from typing import Any, Dict, Optional
+from dataclasses import replace
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from ibkr_core.config import reset_config
+from ibkr_core.control import (
+    get_audit_log_path,
+    get_control_status,
+    load_control,
+    validate_control,
+    write_audit_entry,
+    write_control,
+)
 from ibkr_core.runtime_config import CONFIG_KEYS, get_config_path, load_config_data, update_config_data
 
 logger = logging.getLogger(__name__)
@@ -41,46 +43,14 @@ logger = logging.getLogger(__name__)
 ADMIN_TOKEN_HEADER = APIKeyHeader(
     name="X-Admin-Token",
     auto_error=False,
-    description="Admin token for control operations. Required for toggle endpoints.",
+    description="Admin token for control operations.",
 )
-
-
-class ToggleAction(str, Enum):
-    """Valid toggle actions."""
-
-    ENABLE = "enable"
-    DISABLE = "disable"
-
-
-class ToggleRequest(BaseModel):
-    """Request body for toggle endpoint."""
-
-    action: ToggleAction = Field(..., description="Action to perform: 'enable' or 'disable'")
-    reason: str = Field(..., min_length=1, max_length=500, description="Reason for the action")
-    ttl_minutes: Optional[int] = Field(
-        None,
-        ge=1,
-        le=1440,  # Max 24 hours
-        description="Optional TTL in minutes for auto-revert (disable only)",
-    )
-
-
-class ToggleResponse(BaseModel):
-    """Response from toggle endpoint."""
-
-    success: bool = Field(..., description="Whether the action was successful")
-    action: str = Field(..., description="The action that was performed")
-    trading_enabled: bool = Field(..., description="Current trading state after action")
-    reason: str = Field(..., description="Reason provided for the action")
-    ttl_minutes: Optional[int] = Field(None, description="TTL if set")
-    expires_at: Optional[str] = Field(None, description="Expiry timestamp if TTL set")
-    message: str = Field(..., description="Human-readable status message")
 
 
 class AdminStatusResponse(BaseModel):
     """Response from admin status endpoint.
 
-    Includes both control.json values and legacy guard/toggle status for transition period.
+    Includes control.json values for trading control.
     """
 
     # Primary control.json fields
@@ -90,21 +60,12 @@ class AdminStatusResponse(BaseModel):
     effective_dry_run: bool = Field(..., description="Effective dry run (false for live+enabled)")
     live_trading_override_file: Optional[str] = Field(None, description="Override file path")
     override_file_exists: Optional[bool] = Field(None, description="Whether override file exists (for live+enabled)")
+    override_file_message: Optional[str] = Field(None, description="Override file validation message")
     is_live_trading_enabled: bool = Field(..., description="True if live+enabled")
     validation_errors: list[str] = Field(default_factory=list, description="Control validation errors")
     control_path: str = Field(..., description="Path to control.json")
 
-    # Derived field for backwards compatibility
-    trading_enabled: bool = Field(..., description="Whether trading is currently enabled (orders_enabled)")
 
-    # Legacy fields (deprecated, for transition period)
-    guard_file_exists: Optional[bool] = Field(None, description="(Deprecated) Whether guard file exists")
-    toggle_store_enabled: Optional[bool] = Field(None, description="(Deprecated) Toggle store value")
-    disabled_at: Optional[str] = Field(None, description="When trading was disabled (from toggle store)")
-    disabled_by: Optional[str] = Field(None, description="Who disabled trading (from toggle store)")
-    disabled_reason: Optional[str] = Field(None, description="Reason for disabling (from toggle store)")
-    expires_at: Optional[str] = Field(None, description="TTL expiry timestamp (from toggle store)")
-    time_until_expiry_seconds: Optional[float] = Field(None, description="Seconds until auto-revert")
 
 
 class RuntimeConfigResponse(BaseModel):
@@ -135,6 +96,37 @@ class ConfigUpdateResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
+class ControlUpdateRequest(BaseModel):
+    """Request to update control.json values."""
+
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for the update")
+    trading_mode: Optional[Literal["paper", "live"]] = Field(
+        None,
+        description="Trading mode: paper or live",
+    )
+    orders_enabled: Optional[bool] = Field(
+        None,
+        description="Master toggle for order placement",
+    )
+    dry_run: Optional[bool] = Field(
+        None,
+        description="Dry run mode (ignored when live+enabled)",
+    )
+    live_trading_override_file: Optional[str] = Field(
+        None,
+        description="Override file path for live+enabled safety check",
+    )
+
+
+class ControlUpdateResponse(BaseModel):
+    """Response from control.json update endpoint."""
+
+    success: bool = Field(..., description="Whether the update succeeded")
+    updated_fields: list[str] = Field(default_factory=list, description="Fields updated in control.json")
+    status: AdminStatusResponse = Field(..., description="Updated admin status")
+    message: str = Field(..., description="Status message")
+
+
 def get_admin_token() -> Optional[str]:
     """Get the expected admin token from environment."""
     return os.environ.get("ADMIN_TOKEN")
@@ -143,6 +135,7 @@ def get_admin_token() -> Optional[str]:
 def is_admin_auth_enabled() -> bool:
     """Check if admin authentication is enabled (fail closed if not set)."""
     return get_admin_token() is not None
+
 
 
 async def verify_admin_token(
@@ -255,188 +248,39 @@ router = APIRouter(
 )
 
 
-@router.post(
-    "/toggle",
-    response_model=ToggleResponse,
-    summary="Toggle trading state",
-    description=(
-        "Enable or disable trading. Requires admin token authentication. "
-        "Disable actions can include an optional TTL for auto-revert."
-    ),
-    responses={
-        401: {"description": "Missing or invalid admin token"},
-        403: {"description": "Admin API disabled or non-localhost request"},
-        500: {"description": "mm-control error"},
-    },
-)
-async def toggle_trading(
-    request: Request,
-    body: ToggleRequest,
-) -> ToggleResponse:
-    """
-    Toggle trading enable/disable state.
-
-    This endpoint:
-    1. Validates the admin token
-    2. Performs the enable/disable action via mm-control
-    3. Creates an audit log entry
-    4. Returns the new state
-
-    For disable with TTL:
-    - Creates a Windows Scheduled Task for auto-revert
-    - Sets expires_at in toggle store
-    """
-    try:
-        from mm_control import (
-            disable_trading,
-            enable_trading,
-            disable_via_toggles,
-            enable_via_toggles,
-            get_toggle_status,
-            schedule_ttl_check_task,
-        )
-    except ImportError as e:
-        logger.error(f"mm-control import failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "MM_CONTROL_NOT_AVAILABLE",
-                "message": "mm-control package not installed or import failed.",
-            },
-        )
-
-    client_ip = request.client.host if request.client else "unknown"
-
-    try:
-        if body.action == ToggleAction.ENABLE:
-            # Enable trading
-            logger.info(f"Admin API: enabling trading. Reason: {body.reason}. Client: {client_ip}")
-
-            # Enable via both mechanisms for consistency
-            enable_trading(reason=f"Admin API: {body.reason}")
-            enable_via_toggles(reason=f"Admin API: {body.reason}")
-
-            status = get_toggle_status()
-            return ToggleResponse(
-                success=True,
-                action="enable",
-                trading_enabled=True,
-                reason=body.reason,
-                ttl_minutes=None,
-                expires_at=None,
-                message="Trading enabled successfully.",
-            )
-
-        else:  # DISABLE
-            # Disable trading
-            logger.info(
-                f"Admin API: disabling trading. Reason: {body.reason}. "
-                f"TTL: {body.ttl_minutes}. Client: {client_ip}"
-            )
-
-            # Disable via both mechanisms
-            disable_trading(reason=f"Admin API: {body.reason}")
-            state = disable_via_toggles(
-                reason=f"Admin API: {body.reason}",
-                ttl_minutes=body.ttl_minutes,
-            )
-
-            # Schedule TTL auto-revert if requested
-            if body.ttl_minutes:
-                try:
-                    schedule_ttl_check_task(body.ttl_minutes)
-                    logger.info(f"Scheduled TTL auto-revert in {body.ttl_minutes} minutes")
-                except Exception as e:
-                    logger.warning(f"Failed to schedule TTL task: {e}")
-                    # Don't fail the request, TTL is in toggle store
-
-            return ToggleResponse(
-                success=True,
-                action="disable",
-                trading_enabled=False,
-                reason=body.reason,
-                ttl_minutes=body.ttl_minutes,
-                expires_at=state.expires_at,
-                message=f"Trading disabled. {'Auto-revert in ' + str(body.ttl_minutes) + ' minutes.' if body.ttl_minutes else 'No TTL set.'}",
-            )
-
-    except Exception as e:
-        logger.error(f"Admin toggle failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "TOGGLE_FAILED",
-                "message": f"Failed to toggle trading state: {str(e)}",
-            },
-        )
-
-
 @router.get(
     "/status",
     response_model=AdminStatusResponse,
     summary="Get detailed admin status",
-    description="Get comprehensive trading control status including guard file and toggle store state.",
+    description="Get comprehensive trading control status from control.json.",
     dependencies=[Depends(verify_localhost_only)],  # Only localhost check, no auth required for read-only status
     responses={
         403: {"description": "Non-localhost request"},
-        500: {"description": "mm-control error"},
+        500: {"description": "Control status error"},
     },
 )
 async def get_admin_status() -> AdminStatusResponse:
     """
     Get detailed trading control status.
 
-    Returns control.json values and legacy guard/toggle status for transition period.
+    Returns control.json values for trading control.
     """
     try:
-        from mm_control import (
-            get_control_status,
-            get_guard_path,
-            get_toggle_status,
-        )
-    except ImportError as e:
-        logger.error(f"mm-control import failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "MM_CONTROL_NOT_AVAILABLE",
-                "message": "mm-control package not installed or import failed.",
-            },
-        )
-
-    try:
-        # Get control.json status (primary)
         control_status = get_control_status()
-
-        # Get legacy status for transition period
-        guard_exists = get_guard_path().exists()
-        toggle_status = get_toggle_status()
-
         return AdminStatusResponse(
-            # Primary control.json fields
             trading_mode=control_status["trading_mode"],
             orders_enabled=control_status["orders_enabled"],
             dry_run=control_status["dry_run"],
             effective_dry_run=control_status["effective_dry_run"],
             live_trading_override_file=control_status["live_trading_override_file"],
             override_file_exists=control_status["override_file_exists"],
+            override_file_message=control_status.get("override_file_message"),
             is_live_trading_enabled=control_status["is_live_trading_enabled"],
             validation_errors=control_status["validation_errors"],
             control_path=control_status["control_path"],
-            # Backwards compatibility
-            trading_enabled=control_status["orders_enabled"],
-            # Legacy fields
-            guard_file_exists=guard_exists,
-            toggle_store_enabled=toggle_status.get("trading_enabled", True),
-            disabled_at=toggle_status.get("disabled_at"),
-            disabled_by=toggle_status.get("disabled_by"),
-            disabled_reason=toggle_status.get("disabled_reason"),
-            expires_at=toggle_status.get("expires_at"),
-            time_until_expiry_seconds=toggle_status.get("time_until_expiry_seconds"),
         )
-
     except Exception as e:
-        logger.error(f"Admin status failed: {e}")
+        logger.error("Admin status failed: %s", e)
         raise HTTPException(
             status_code=500,
             detail={
@@ -444,6 +288,104 @@ async def get_admin_status() -> AdminStatusResponse:
                 "message": f"Failed to get status: {str(e)}",
             },
         )
+
+
+@router.put(
+    "/control",
+    response_model=ControlUpdateResponse,
+    summary="Update control.json settings",
+    description=(
+        "Update control.json values for trading_mode, orders_enabled, dry_run, "
+        "and live_trading_override_file. Requires admin token authentication."
+    ),
+    responses={
+        400: {"description": "Invalid control settings"},
+        401: {"description": "Missing or invalid admin token"},
+        403: {"description": "Admin API disabled or non-localhost request"},
+        500: {"description": "Control update error"},
+    },
+)
+async def update_control_settings(
+    request: Request,
+    body: ControlUpdateRequest,
+) -> ControlUpdateResponse:
+    """
+    Update control.json settings.
+
+    Applies partial updates to the centralized control.json file and validates
+    the resulting configuration before writing.
+    """
+    current = load_control()
+    updated = replace(current)
+    updated_fields: list[str] = []
+
+    if body.trading_mode is not None and body.trading_mode != current.trading_mode:
+        updated.trading_mode = body.trading_mode
+        updated_fields.append("trading_mode")
+
+    if body.orders_enabled is not None and body.orders_enabled != current.orders_enabled:
+        updated.orders_enabled = body.orders_enabled
+        updated_fields.append("orders_enabled")
+
+    if body.dry_run is not None and body.dry_run != current.dry_run:
+        updated.dry_run = body.dry_run
+        updated_fields.append("dry_run")
+
+    if body.live_trading_override_file is not None:
+        override_value = body.live_trading_override_file.strip()
+        override_value = override_value if override_value else None
+        if override_value != current.live_trading_override_file:
+            updated.live_trading_override_file = override_value
+            updated_fields.append("live_trading_override_file")
+
+    if not updated_fields:
+        return ControlUpdateResponse(
+            success=True,
+            updated_fields=[],
+            status=await get_admin_status(),
+            message="No changes applied.",
+        )
+
+    validation_errors = validate_control(updated)
+    if validation_errors:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_CONTROL_SETTINGS",
+                "message": "Invalid control.json settings.",
+                "validation_errors": validation_errors,
+            },
+        )
+
+    try:
+        write_control(updated)
+        reset_config()
+    except Exception as exc:
+        logger.error(f"Failed to write control.json: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "CONTROL_UPDATE_FAILED",
+                "message": f"Failed to update control.json: {str(exc)}",
+            },
+        )
+
+    try:
+        write_audit_entry(
+            action="CONTROL_UPDATED",
+            reason=body.reason,
+            updated_fields=",".join(updated_fields),
+            client_ip=request.client.host if request.client else "unknown",
+        )
+    except Exception as exc:
+        logger.warning("Failed to write control update audit entry: %s", exc)
+
+    return ControlUpdateResponse(
+        success=True,
+        updated_fields=updated_fields,
+        status=await get_admin_status(),
+        message="Control settings updated.",
+    )
 
 
 @router.get(
@@ -511,10 +453,7 @@ async def update_runtime_config_endpoint(
     restart_required_keys = sorted(set(updated_keys).intersection(restart_sensitive_keys))
     restart_required = len(restart_required_keys) > 0
 
-    # Log to mm-control audit trail if available
     try:
-        from mm_control import write_audit_entry
-
         write_audit_entry(
             action="CONFIG_UPDATED",
             reason=f"Admin API: {body.reason}",
@@ -523,8 +462,6 @@ async def update_runtime_config_endpoint(
                 "client": request.client.host if request.client else "unknown",
             },
         )
-    except ImportError:
-        logger.warning("mm-control not available, skipping audit log for config update")
     except Exception as exc:
         logger.warning("Failed to write config update audit entry: %s", exc)
 
@@ -561,7 +498,7 @@ class AuditLogResponse(BaseModel):
     "/audit-log",
     response_model=AuditLogResponse,
     summary="Get recent audit log entries",
-    description="Retrieve recent entries from the mm-control audit log.",
+    description="Retrieve recent entries from the control.json audit log.",
     dependencies=[Depends(verify_localhost_only)],  # Only localhost check, no auth required for read-only log
     responses={
         403: {"description": "Non-localhost request"},
@@ -581,21 +518,9 @@ async def get_audit_log(lines: int = 50) -> AuditLogResponse:
     # Clamp lines to reasonable range
     lines = max(1, min(lines, 500))
 
-    try:
-        from mm_control import get_audit_log_path
-    except ImportError as e:
-        logger.error(f"mm-control import failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "MM_CONTROL_NOT_AVAILABLE",
-                "message": "mm-control package not installed or import failed.",
-            },
-        )
+    audit_path = get_audit_log_path()
 
     try:
-        audit_path = get_audit_log_path()
-
         if not audit_path.exists():
             return AuditLogResponse(entries=[], total_lines=0)
 
@@ -782,10 +707,7 @@ async def restart_services(
         f"Services: {body.services}. Reason: {body.reason}. Client: {client_ip}"
     )
 
-    # Log to mm-control audit
     try:
-        from mm_control import write_audit_entry
-
         action = "RESTART_DRY_RUN" if body.dry_run else "RESTART_REQUEST"
         write_audit_entry(
             action=action,
@@ -793,8 +715,6 @@ async def restart_services(
             services=",".join(body.services),
             client_ip=client_ip,
         )
-    except ImportError:
-        logger.warning("mm-control not available, skipping audit log")
     except Exception as e:
         logger.warning(f"Failed to write audit entry: {e}")
 
@@ -842,8 +762,6 @@ async def restart_services(
 
     # Log completion
     try:
-        from mm_control import write_audit_entry
-
         completion_action = "RESTART_DRY_RUN_COMPLETE" if body.dry_run else "RESTART_COMPLETE"
         write_audit_entry(
             action=completion_action,

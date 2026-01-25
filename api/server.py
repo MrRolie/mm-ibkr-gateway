@@ -32,7 +32,7 @@ from typing import List, Optional
 
 from pathlib import Path as FilePath
 
-from fastapi import Depends, FastAPI, Path
+from fastapi import Depends, FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -54,6 +54,7 @@ from api.errors import (
     ErrorResponse,
     api_error_handler,
     general_exception_handler,
+    http_exception_handler,
     map_ibkr_exception,
 )
 from api.admin import router as admin_router
@@ -124,11 +125,12 @@ app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(TimeWindowMiddleware)
 
 # Add trading disabled middleware
-# This checks mm-control guard file/toggle store for order endpoints
+# This checks control.json for order endpoints
 app.add_middleware(TradingDisabledMiddleware)
 
 # Register exception handlers
 app.add_exception_handler(APIError, api_error_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Include admin router for trading control operations
@@ -282,38 +284,18 @@ async def health_check(
     "/control/status",
     tags=["Control"],
     summary="Trading control status",
-    description="Get current trading control status from mm-control (guard file, toggles, TTL)",
+    description="Get current trading control status from control.json",
 )
 async def get_control_status():
     """
-    Get trading control status from mm-control.
-
-    Returns toggle status including:
-        - trading_enabled: Whether trading is currently enabled
-        - disabled_at: Timestamp when trading was disabled (if applicable)
-        - disabled_by: User who disabled trading
-        - disabled_reason: Reason for disabling
-        - expires_at: TTL expiry timestamp (if applicable)
-        - time_until_expiry_seconds: Seconds until auto-revert (if applicable)
+    Get trading control status from control.json.
 
     Returns:
-        dict: Trading control status from mm-control
+        dict: Control status from mm-ibkr-gateway control.json
     """
-    try:
-        from mm_control import get_toggle_status
+    from ibkr_core.control import get_control_status as _get_control_status
 
-        status = get_toggle_status()
-        return status
-    except ImportError:
-        logger.warning("mm-control not installed - control status unavailable")
-        return {
-            "error": "mm-control not installed",
-            "trading_enabled": None,
-            "disabled_at": None,
-            "disabled_by": None,
-            "disabled_reason": None,
-            "expires_at": None,
-        }
+    return _get_control_status()
 
 
 # =============================================================================

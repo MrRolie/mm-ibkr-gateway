@@ -49,9 +49,7 @@ def _default_config() -> Dict[str, Any]:
         "log_dir": f"{storage_dir}\\logs",
         "audit_db_path": f"{storage_dir}\\audit.db",
         "watchdog_log_dir": "C:\\ProgramData\\mm-ibkr-gateway\\logs",
-        "mm_control_base_dir": "C:\\ProgramData\\mm-control",
-        "mm_control_enable_background_monitor": True,
-        "mm_control_ttl_check_interval": 30,
+        "control_dir": "C:\\ProgramData\\mm-ibkr-gateway",
         "run_window_start": "04:00",
         "run_window_end": "20:00",
         "run_window_days": "Mon,Tue,Wed,Thu,Fri",
@@ -144,16 +142,8 @@ def _normalize_config(raw: Dict[str, Any]) -> Dict[str, Any]:
     merged["watchdog_log_dir"] = _coerce_str(
         merged.get("watchdog_log_dir"), defaults["watchdog_log_dir"]
     )
-    merged["mm_control_base_dir"] = _coerce_str(
-        merged.get("mm_control_base_dir"), defaults["mm_control_base_dir"]
-    )
-    merged["mm_control_enable_background_monitor"] = _coerce_bool(
-        merged.get("mm_control_enable_background_monitor"),
-        defaults["mm_control_enable_background_monitor"],
-    )
-    merged["mm_control_ttl_check_interval"] = _coerce_int(
-        merged.get("mm_control_ttl_check_interval"),
-        defaults["mm_control_ttl_check_interval"],
+    merged["control_dir"] = _coerce_str(
+        merged.get("control_dir"), defaults["control_dir"]
     )
     merged["run_window_start"] = _coerce_str(
         merged.get("run_window_start"), defaults["run_window_start"]
@@ -234,9 +224,7 @@ class RuntimeConfig:
     log_dir: str
     audit_db_path: str
     watchdog_log_dir: str
-    mm_control_base_dir: str
-    mm_control_enable_background_monitor: bool
-    mm_control_ttl_check_interval: int
+    control_dir: str
     run_window_start: str
     run_window_end: str
     run_window_days: str
@@ -265,9 +253,7 @@ def load_runtime_config(create_if_missing: bool = False) -> RuntimeConfig:
         log_dir=data["log_dir"],
         audit_db_path=data["audit_db_path"],
         watchdog_log_dir=data["watchdog_log_dir"],
-        mm_control_base_dir=data["mm_control_base_dir"],
-        mm_control_enable_background_monitor=data["mm_control_enable_background_monitor"],
-        mm_control_ttl_check_interval=data["mm_control_ttl_check_interval"],
+        control_dir=data["control_dir"],
         run_window_start=data["run_window_start"],
         run_window_end=data["run_window_end"],
         run_window_days=data["run_window_days"],

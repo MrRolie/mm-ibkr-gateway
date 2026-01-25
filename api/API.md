@@ -11,7 +11,7 @@ This API is **SAFE BY DEFAULT**:
 - **Preview always works**: The `/orders/preview` endpoint always works regardless of settings (read-only simulation)
 - **Paper mode default**: System defaults to paper trading (`trading_mode=paper` in `control.json`)
 
-To enable real order placement, use `mm-control` (CLI or `set-control.ps1`) to set `orders_enabled=true` and `dry_run=false` in `control.json`. For live trading with orders enabled, set `trading_mode=live` and provide an override file. See the main README for complete safety documentation.
+To enable real order placement, update `control.json` (via the operator UI or `PUT /admin/control`) to set `orders_enabled=true` and `dry_run=false`. For live trading with orders enabled, set `trading_mode=live` and provide an override file. See the main README for complete safety documentation.
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ python -m api.server
 ### Runtime Configuration
 
 Operational settings load from `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_CONFIG_PATH`).
-Trading controls load from `C:\ProgramData\mm-control\control.json`.
+Trading controls load from `C:\ProgramData\mm-ibkr-gateway\control.json`.
 
 Minimal `.env` (repo root) for secrets:
 
@@ -497,7 +497,7 @@ Configure via `API_REQUEST_TIMEOUT` environment variable.
 
 ## Safety Notes
 
-Trading controls are managed via `C:\ProgramData\mm-control\control.json`. Use `mm-control status` or `set-control.ps1` to view/change settings.
+Trading controls are managed via `C:\ProgramData\mm-ibkr-gateway\control.json`. Use the operator UI or `PUT /admin/control` to view/change settings.
 
 1. **Paper Trading Only**: By default, `trading_mode=paper`. Never set to `live` without explicit override file.
 

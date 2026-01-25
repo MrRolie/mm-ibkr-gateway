@@ -166,7 +166,7 @@ $envString = $envContent -join "`n"
 # Set service display name and description
 Write-Verbose "Setting display name and description..."
 $displayMode = "Managed by control.json"
-$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlBaseDir = Get-GatewayConfigValue $config "control_dir" "C:\ProgramData\mm-ibkr-gateway"
 $controlFile = Join-Path $controlBaseDir "control.json"
 if (Test-Path $controlFile) {
     try {

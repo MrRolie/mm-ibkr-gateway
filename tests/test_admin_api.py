@@ -3,7 +3,7 @@
 Tests cover:
 - Admin token authentication (fail-closed behavior)
 - Localhost-only access enforcement
-- Toggle request validation
+- Control.json update behavior
 """
 
 import asyncio
@@ -215,110 +215,6 @@ class TestLocalhostOnlyVerification:
         assert "UNKNOWN_CLIENT" in exc_info.value.detail["error"]
 
 
-class TestToggleRequestValidation:
-    """Tests for ToggleRequest model validation."""
-
-    def test_valid_enable_request(self):
-        """Valid enable request should pass validation."""
-        from api.admin import ToggleRequest, ToggleAction
-
-        req = ToggleRequest(action=ToggleAction.ENABLE, reason="Test enable")
-        assert req.action == ToggleAction.ENABLE
-        assert req.reason == "Test enable"
-        assert req.ttl_minutes is None
-
-    def test_valid_disable_request_with_ttl(self):
-        """Valid disable request with TTL should pass validation."""
-        from api.admin import ToggleRequest, ToggleAction
-
-        req = ToggleRequest(
-            action=ToggleAction.DISABLE,
-            reason="Test disable",
-            ttl_minutes=30,
-        )
-        assert req.action == ToggleAction.DISABLE
-        assert req.ttl_minutes == 30
-
-    def test_ttl_minimum_enforced(self):
-        """TTL must be at least 1 minute."""
-        from api.admin import ToggleRequest, ToggleAction
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            ToggleRequest(
-                action=ToggleAction.DISABLE,
-                reason="Test",
-                ttl_minutes=0,
-            )
-
-    def test_ttl_maximum_enforced(self):
-        """TTL must not exceed 1440 minutes (24 hours)."""
-        from api.admin import ToggleRequest, ToggleAction
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            ToggleRequest(
-                action=ToggleAction.DISABLE,
-                reason="Test",
-                ttl_minutes=1500,
-            )
-
-    def test_reason_required(self):
-        """Reason is required."""
-        from api.admin import ToggleRequest, ToggleAction
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            ToggleRequest(action=ToggleAction.ENABLE)
-
-    def test_reason_cannot_be_empty(self):
-        """Reason cannot be empty string."""
-        from api.admin import ToggleRequest, ToggleAction
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            ToggleRequest(action=ToggleAction.ENABLE, reason="")
-
-
-class TestToggleResponse:
-    """Tests for ToggleResponse model."""
-
-    def test_response_model_creation(self):
-        """ToggleResponse should serialize correctly."""
-        from api.admin import ToggleResponse
-
-        resp = ToggleResponse(
-            success=True,
-            action="enable",
-            trading_enabled=True,
-            reason="Test",
-            ttl_minutes=None,
-            expires_at=None,
-            message="Trading enabled successfully.",
-        )
-
-        assert resp.success is True
-        assert resp.action == "enable"
-        assert resp.trading_enabled is True
-
-    def test_response_with_ttl(self):
-        """ToggleResponse with TTL should include expiry."""
-        from api.admin import ToggleResponse
-
-        resp = ToggleResponse(
-            success=True,
-            action="disable",
-            trading_enabled=False,
-            reason="Maintenance",
-            ttl_minutes=30,
-            expires_at="2026-01-14T12:00:00+00:00",
-            message="Trading disabled. Auto-revert in 30 minutes.",
-        )
-
-        assert resp.ttl_minutes == 30
-        assert resp.expires_at == "2026-01-14T12:00:00+00:00"
-
-
 class TestAdminStatusResponse:
     """Tests for AdminStatusResponse model."""
 
@@ -327,39 +223,40 @@ class TestAdminStatusResponse:
         from api.admin import AdminStatusResponse
 
         status = AdminStatusResponse(
-            trading_enabled=False,
-            guard_file_exists=True,
-            toggle_store_enabled=False,
-            disabled_at="2026-01-14T10:00:00+00:00",
-            disabled_by="admin",
-            disabled_reason="Testing",
-            expires_at="2026-01-14T11:00:00+00:00",
-            time_until_expiry_seconds=1800.0,
+            trading_mode="paper",
+            orders_enabled=False,
+            dry_run=True,
+            effective_dry_run=False,
+            live_trading_override_file=None,
+            override_file_exists=None,
+            override_file_message=None,
+            is_live_trading_enabled=False,
+            validation_errors=[],
+            control_path="C:\\ProgramData\\mm-ibkr-gateway\\control.json",
         )
 
-        assert status.trading_enabled is False
-        assert status.guard_file_exists is True
-        assert status.disabled_by == "admin"
-        assert status.time_until_expiry_seconds == 1800.0
+        assert status.orders_enabled is False
+        assert status.control_path.endswith("control.json")
 
     def test_status_when_enabled(self):
         """AdminStatusResponse for enabled state."""
         from api.admin import AdminStatusResponse
 
         status = AdminStatusResponse(
-            trading_enabled=True,
-            guard_file_exists=False,
-            toggle_store_enabled=True,
-            disabled_at=None,
-            disabled_by=None,
-            disabled_reason=None,
-            expires_at=None,
-            time_until_expiry_seconds=None,
+            trading_mode="paper",
+            orders_enabled=True,
+            dry_run=False,
+            effective_dry_run=True,
+            live_trading_override_file=None,
+            override_file_exists=None,
+            override_file_message=None,
+            is_live_trading_enabled=False,
+            validation_errors=[],
+            control_path="C:\\ProgramData\\mm-ibkr-gateway\\control.json",
         )
 
-        assert status.trading_enabled is True
-        assert status.guard_file_exists is False
-        assert status.disabled_at is None
+        assert status.orders_enabled is True
+        assert status.control_path.endswith("control.json")
 
 
 class TestAuditLogEntry:

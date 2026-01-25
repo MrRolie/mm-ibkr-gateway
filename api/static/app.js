@@ -14,6 +14,7 @@ let adminToken = localStorage.getItem('adminToken') || '';
 let pollTimer = null;
 let pendingAction = null;
 let runWindowTimer = null;
+let controlStateSnapshot = null;
 
 // DOM Elements
 const elements = {
@@ -28,20 +29,22 @@ const elements = {
 
     // Status
     statusValue: document.getElementById('status-value'),
-    guardFileStatus: document.getElementById('guard-file-status'),
-    disabledBy: document.getElementById('disabled-by'),
-    disabledReason: document.getElementById('disabled-reason'),
-    disabledAt: document.getElementById('disabled-at'),
-    timeUntilExpiry: document.getElementById('time-until-expiry'),
-    ttlRow: document.getElementById('ttl-row'),
+    tradingMode: document.getElementById('trading-mode'),
 
-    // Controls
-    enableBtn: document.getElementById('enable-btn'),
-    disableBtn: document.getElementById('disable-btn'),
-    ttlSelect: document.getElementById('ttl-select'),
-    customTtlGroup: document.getElementById('custom-ttl-group'),
-    customTtlInput: document.getElementById('custom-ttl'),
-    reasonInput: document.getElementById('reason-input'),
+    // Control.json
+    controlTradingMode: document.getElementById('control-trading-mode'),
+    controlOrdersEnabled: document.getElementById('control-orders-enabled'),
+    controlDryRun: document.getElementById('control-dry-run'),
+    controlOverrideFile: document.getElementById('control-override-file'),
+    controlOverrideStatus: document.getElementById('control-override-status'),
+    effectiveMode: document.getElementById('effective-mode'),
+    liveTradingEnabled: document.getElementById('live-trading-enabled'),
+    controlValidationRow: document.getElementById('control-validation-row'),
+    controlValidationErrors: document.getElementById('control-validation-errors'),
+    controlReasonInput: document.getElementById('control-reason-input'),
+    saveControlBtn: document.getElementById('save-control-btn'),
+    controlSaveStatus: document.getElementById('control-save-status'),
+    refreshControlBtn: document.getElementById('refresh-control-btn'),
 
     // Audit
     auditLog: document.getElementById('audit-log'),
@@ -61,8 +64,10 @@ const elements = {
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     loadSavedToken();
-    startPolling();
+    fetchStatus();
+    fetchControlSettings();
     fetchAuditLog();
+    startPolling();
 });
 
 // Event Listeners
@@ -73,17 +78,16 @@ function setupEventListeners() {
         if (e.key === 'Enter') saveToken();
     });
 
-    // Control buttons
-    elements.enableBtn.addEventListener('click', () => showConfirmation('enable'));
-    elements.disableBtn.addEventListener('click', () => showConfirmation('disable'));
-
-    // TTL selector
-    elements.ttlSelect.addEventListener('change', () => {
-        elements.customTtlGroup.classList.toggle('hidden', elements.ttlSelect.value !== 'custom');
-    });
-
     // Audit refresh
     elements.refreshAuditBtn.addEventListener('click', fetchAuditLog);
+
+    // Control.json save
+    if (elements.saveControlBtn) {
+        elements.saveControlBtn.addEventListener('click', saveControlSettings);
+    }
+    if (elements.refreshControlBtn) {
+        elements.refreshControlBtn.addEventListener('click', fetchControlSettings);
+    }
 
     // Modal
     elements.modalCancel.addEventListener('click', hideModal);
@@ -112,6 +116,7 @@ function saveToken() {
         elements.authStatus.textContent = 'Token saved';
         elements.authStatus.className = 'status-text success';
         fetchStatus();
+        fetchControlSettings();
         fetchAuditLog();
     } else {
         localStorage.removeItem('adminToken');
@@ -286,7 +291,7 @@ async function apiCall(endpoint, options = {}) {
 
 // Status Polling
 function startPolling() {
-    fetchStatus();
+    if (pollTimer) return;
     pollTimer = setInterval(fetchStatus, CONFIG.pollInterval);
 }
 
@@ -300,40 +305,152 @@ function stopPolling() {
 async function fetchStatus() {
     try {
         const status = await apiCall('/admin/status');
-        updateStatusDisplay(status);
+        updateTradingStatus(status);
         setConnectionStatus(true);
+        hideRunWindowBanner();
     } catch (error) {
         setConnectionStatus(false);
         console.error('Failed to fetch status:', error);
     }
 }
 
-function updateStatusDisplay(status) {
+async function fetchControlSettings() {
+    try {
+        const status = await apiCall('/admin/status');
+        updateControlDisplay(status);
+        updateTradingStatus(status);
+        setConnectionStatus(true);
+        hideRunWindowBanner();
+    } catch (error) {
+        controlStateSnapshot = null;
+        if (elements.controlSaveStatus) {
+            elements.controlSaveStatus.textContent = `Refresh failed: ${error.message}`;
+            elements.controlSaveStatus.className = 'status-text error';
+        }
+        setConnectionStatus(false);
+        console.error('Failed to fetch control settings:', error);
+    }
+}
+
+function updateTradingStatus(status) {
     // Main status
-    const isEnabled = status.trading_enabled;
+    const isEnabled = Boolean(status.orders_enabled);
     elements.statusValue.textContent = isEnabled ? 'ENABLED' : 'DISABLED';
     elements.statusValue.className = `status-badge ${isEnabled ? 'enabled' : 'disabled'}`;
 
-    // Guard file
-    elements.guardFileStatus.textContent = status.guard_file_exists ? 'Present (blocking)' : 'Not present';
-
-    // Disable details
-    elements.disabledBy.textContent = status.disabled_by || '--';
-    elements.disabledReason.textContent = status.disabled_reason || '--';
-    elements.disabledAt.textContent = status.disabled_at ? formatDateTime(status.disabled_at) : '--';
-
-    // TTL
-    if (status.time_until_expiry_seconds && status.time_until_expiry_seconds > 0) {
-        elements.ttlRow.classList.remove('hidden');
-        elements.timeUntilExpiry.textContent = formatDuration(status.time_until_expiry_seconds);
-    } else {
-        elements.ttlRow.classList.add('hidden');
-        elements.timeUntilExpiry.textContent = '--';
+    // Trading mode (paper/live)
+    const modeValue = status.trading_mode ? String(status.trading_mode).toLowerCase() : '';
+    if (elements.tradingMode) {
+        if (modeValue === 'paper' || modeValue === 'live') {
+            elements.tradingMode.textContent = modeValue.toUpperCase();
+            elements.tradingMode.className = `mode-badge ${modeValue}`;
+        } else {
+            elements.tradingMode.textContent = '--';
+            elements.tradingMode.className = '';
+        }
     }
 
-    // Update button states
-    elements.enableBtn.disabled = isEnabled;
-    elements.disableBtn.disabled = !isEnabled;
+}
+
+function updateControlDisplay(status) {
+    if (elements.controlTradingMode && status.trading_mode) {
+        elements.controlTradingMode.value = status.trading_mode;
+    }
+    if (elements.controlOrdersEnabled) {
+        elements.controlOrdersEnabled.checked = Boolean(status.orders_enabled);
+    }
+    if (elements.controlDryRun) {
+        elements.controlDryRun.checked = Boolean(status.dry_run);
+    }
+    if (elements.controlOverrideFile) {
+        elements.controlOverrideFile.value = status.live_trading_override_file || '';
+    }
+    if (elements.effectiveMode) {
+        let effectiveLabel = '--';
+        if (status.orders_enabled === false) {
+            effectiveLabel = 'ORDERS DISABLED';
+        } else if (typeof status.effective_dry_run === 'boolean') {
+            effectiveLabel = status.effective_dry_run ? 'DRY RUN' : 'LIVE ORDERS';
+        }
+        elements.effectiveMode.textContent = effectiveLabel;
+    }
+    if (elements.liveTradingEnabled) {
+        const liveEnabled = Boolean(status.is_live_trading_enabled);
+        elements.liveTradingEnabled.textContent = liveEnabled ? 'YES' : 'NO';
+    }
+    if (elements.controlOverrideStatus) {
+        const isLiveEnabled = Boolean(status.is_live_trading_enabled);
+        if (!isLiveEnabled) {
+            elements.controlOverrideStatus.textContent = 'Not required (paper mode or orders disabled).';
+            elements.controlOverrideStatus.className = 'status-text';
+        } else if (status.override_file_exists) {
+            elements.controlOverrideStatus.textContent = 'Override file present.';
+            elements.controlOverrideStatus.className = 'status-text success';
+        } else {
+            const message = status.override_file_message || 'Override file missing.';
+            elements.controlOverrideStatus.textContent = message;
+            elements.controlOverrideStatus.className = 'status-text error';
+        }
+    }
+    if (elements.controlValidationRow && elements.controlValidationErrors) {
+        const errors = status.validation_errors || [];
+        if (errors.length > 0) {
+            elements.controlValidationErrors.textContent = errors.join('; ');
+            elements.controlValidationRow.classList.remove('hidden');
+        } else {
+            elements.controlValidationErrors.textContent = '--';
+            elements.controlValidationRow.classList.add('hidden');
+        }
+    }
+
+    controlStateSnapshot = {
+        trading_mode: status.trading_mode || '',
+        orders_enabled: Boolean(status.orders_enabled),
+        dry_run: Boolean(status.dry_run),
+        live_trading_override_file: normalizeOverrideValue(status.live_trading_override_file),
+    };
+}
+
+function normalizeOverrideValue(value) {
+    if (!value) return '';
+    return String(value).trim();
+}
+
+function buildControlPayload(reason) {
+    return {
+        reason,
+        trading_mode: elements.controlTradingMode?.value || null,
+        orders_enabled: Boolean(elements.controlOrdersEnabled?.checked),
+        dry_run: Boolean(elements.controlDryRun?.checked),
+        live_trading_override_file: normalizeOverrideValue(elements.controlOverrideFile?.value) || null,
+    };
+}
+
+async function saveControlSettings() {
+    if (!elements.controlReasonInput) return;
+    const reason = elements.controlReasonInput.value.trim();
+    if (!reason) {
+        elements.controlSaveStatus.textContent = 'Reason is required.';
+        elements.controlSaveStatus.className = 'status-text error';
+        elements.controlReasonInput.focus();
+        return;
+    }
+
+    elements.controlSaveStatus.textContent = '';
+    elements.controlSaveStatus.className = 'status-text';
+
+    const payload = buildControlPayload(reason);
+    const previousOrdersEnabled = controlStateSnapshot?.orders_enabled;
+    const ordersEnabledChanged = typeof previousOrdersEnabled === 'boolean'
+        && payload.orders_enabled !== previousOrdersEnabled;
+
+    if (ordersEnabledChanged) {
+        const action = payload.orders_enabled ? 'enable' : 'disable';
+        showControlConfirmation(action, payload);
+        return;
+    }
+
+    await submitControlSettings(payload);
 }
 
 function setConnectionStatus(connected) {
@@ -347,7 +464,12 @@ async function fetchAuditLog() {
         const data = await apiCall('/admin/audit-log?lines=50');
         displayAuditLog(data.entries || []);
     } catch (error) {
-        elements.auditLog.innerHTML = '<p class="loading-text">Failed to load audit log</p>';
+        elements.auditLog.innerHTML = '';
+        const message = `Failed to load audit log: ${error.message}`;
+        const placeholder = document.createElement('p');
+        placeholder.className = 'loading-text';
+        placeholder.textContent = message;
+        elements.auditLog.appendChild(placeholder);
     }
 }
 
@@ -373,25 +495,13 @@ function displayAuditLog(entries) {
 }
 
 // Confirmation Modal
-function showConfirmation(action) {
-    const reason = elements.reasonInput.value.trim();
-    if (!reason) {
-        alert('Please enter a reason for this action');
-        elements.reasonInput.focus();
-        return;
-    }
-
-    pendingAction = {
-        action,
-        reason,
-        ttl: action === 'disable' ? getTtlValue() : null,
-    };
-
+function showControlConfirmation(action, payload) {
+    pendingAction = { action, payload };
     const word = action.toUpperCase();
-    elements.modalTitle.textContent = `Confirm ${action === 'enable' ? 'Enable' : 'Disable'} Trading`;
+    elements.modalTitle.textContent = `Confirm ${action === 'enable' ? 'Enable' : 'Disable'} Orders`;
     elements.modalMessage.textContent = action === 'enable'
-        ? 'This will enable live trading operations.'
-        : `This will disable all trading operations${pendingAction.ttl ? ` for ${pendingAction.ttl} minutes` : ''}.`;
+        ? 'This will set orders_enabled=true in control.json.'
+        : 'This will set orders_enabled=false in control.json.';
     elements.confirmationWord.textContent = word;
     elements.confirmationInput.value = '';
     elements.confirmationInput.placeholder = `Type ${word} to confirm`;
@@ -408,7 +518,8 @@ function hideModal() {
 }
 
 function validateConfirmation() {
-    const expected = pendingAction?.action?.toUpperCase() || '';
+    if (!pendingAction) return;
+    const expected = pendingAction.action.toUpperCase();
     const entered = elements.confirmationInput.value.toUpperCase();
     elements.modalConfirm.disabled = entered !== expected;
 }
@@ -416,40 +527,35 @@ function validateConfirmation() {
 async function confirmAction() {
     if (!pendingAction) return;
 
-    const { action, reason, ttl } = pendingAction;
+    const { payload } = pendingAction;
     hideModal();
-
-    try {
-        const body = {
-            action,
-            reason,
-            ...(ttl && { ttl_minutes: parseInt(ttl, 10) }),
-        };
-
-        const result = await apiCall('/admin/toggle', {
-            method: 'POST',
-            body: JSON.stringify(body),
-        });
-
-        // Refresh status and audit log
-        await fetchStatus();
-        await fetchAuditLog();
-
-        // Clear reason input
-        elements.reasonInput.value = '';
-
-        alert(result.message || 'Action completed successfully');
-    } catch (error) {
-        alert(`Action failed: ${error.message}`);
-    }
+    await submitControlSettings(payload);
 }
 
-function getTtlValue() {
-    const value = elements.ttlSelect.value;
-    if (value === 'custom') {
-        return elements.customTtlInput.value;
+async function submitControlSettings(payload) {
+    try {
+        const response = await apiCall('/admin/control', {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+
+        if (response.status) {
+            updateTradingStatus(response.status);
+            updateControlDisplay(response.status);
+        } else {
+            await fetchStatus();
+            await fetchControlSettings();
+        }
+        await fetchAuditLog();
+
+        elements.controlSaveStatus.textContent = response.message || 'Control settings updated.';
+        elements.controlSaveStatus.className = 'status-text success';
+        elements.controlReasonInput.value = '';
+        hideRunWindowBanner();
+    } catch (error) {
+        elements.controlSaveStatus.textContent = `Update failed: ${error.message}`;
+        elements.controlSaveStatus.className = 'status-text error';
     }
-    return value || null;
 }
 
 // Utility Functions

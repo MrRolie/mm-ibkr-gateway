@@ -37,7 +37,7 @@ $runWindowDays = Get-GatewayConfigValue $config "run_window_days" "Mon,Tue,Wed,T
 $runWindowTimezone = Get-GatewayConfigValue $config "run_window_timezone" "America/Toronto"
 $dataStorageDir = Get-GatewayConfigValue $config "data_storage_dir" $null
 
-$controlBaseDir = Get-GatewayConfigValue $config "mm_control_base_dir" "C:\ProgramData\mm-control"
+$controlBaseDir = Get-GatewayConfigValue $config "control_dir" "C:\ProgramData\mm-ibkr-gateway"
 $controlFile = Join-Path $controlBaseDir "control.json"
 $tradingMode = "paper"
 $ordersEnabled = $null
@@ -190,19 +190,25 @@ if ($dataStorageDir) {
 }
 Write-Host ""
 
-# mm-control status
-Write-Host "MM-CONTROL" -ForegroundColor White
-$guardFile = Join-Path $controlBaseDir "TRADING_DISABLED"
-if (Test-Path $guardFile) {
+# control.json status
+Write-Host "TRADING CONTROL" -ForegroundColor White
+if ($null -ne $ordersEnabled) {
     Write-Host "  Trading Status:  " -NoNewline
-    Write-Host "DISABLED" -ForegroundColor Red
-    $guardContent = Get-Content $guardFile -Raw
-    if ($guardContent) {
-        Write-Host "  Guard Reason:    $($guardContent.Split('|')[2].Trim())" -ForegroundColor Gray
+    if ($ordersEnabled) {
+        Write-Host "ENABLED" -ForegroundColor Green
+    } else {
+        Write-Host "DISABLED" -ForegroundColor Red
     }
 } else {
-    Write-Host "  Trading Status:  " -NoNewline
-    Write-Host "ENABLED" -ForegroundColor Green
+    Write-Host "  Trading Status:  UNKNOWN (control.json unreadable)" -ForegroundColor Yellow
+}
+
+if ($tradingMode -eq "live" -and $ordersEnabled) {
+    if ($overrideFile -and (Test-Path $overrideFile)) {
+        Write-Host "  Override File:   Present" -ForegroundColor Gray
+    } else {
+        Write-Host "  Override File:   Missing" -ForegroundColor Yellow
+    }
 }
 
 if (Test-Path $controlFile) {

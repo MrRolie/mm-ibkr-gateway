@@ -2,7 +2,7 @@
 Configuration management and safety rails for IBKR integration.
 
 Trading controls (trading_mode, orders_enabled, live_trading_override_file)
-are loaded from mm-control's control.json for centralized management.
+are loaded from the canonical control.json managed by mm-ibkr-gateway.
 
 Other settings (IBKR connection, API port, paths) are loaded from the
 ProgramData config.json file.
@@ -78,10 +78,8 @@ class Config:
     run_window_days: str
     run_window_timezone: str
 
-    # mm-control settings
-    mm_control_base_dir: str
-    mm_control_enable_background_monitor: bool
-    mm_control_ttl_check_interval: int
+    # Control.json location
+    control_dir: str
 
     # Admin settings
     admin_restart_enabled: bool
@@ -135,8 +133,8 @@ def load_config() -> Config:
 
     runtime = load_runtime_config()
 
-    if runtime.mm_control_base_dir:
-        os.environ["MM_CONTROL_BASE_DIR"] = runtime.mm_control_base_dir
+    if runtime.control_dir:
+        os.environ["MM_IBKR_CONTROL_DIR"] = runtime.control_dir
 
     # IBKR Connection
     ibkr_host = runtime.ibkr_gateway_host
@@ -149,28 +147,18 @@ def load_config() -> Config:
     live_port = runtime.live_gateway_port
     live_client_id = runtime.live_client_id
 
-    # Load trading controls from mm-control's control.json (preferred)
-    # Falls back to environment variables if mm-control not installed
-    try:
-        from mm_control.control_state import load_control as _load_control_state
+    from ibkr_core.control import get_control_path, load_control as _load_control_state
 
-        control_state = _load_control_state()
-        trading_mode = control_state.trading_mode
-        orders_enabled = control_state.orders_enabled
-        live_trading_override_file = control_state.live_trading_override_file
-        logger.debug(
-            "Loaded trading controls from control.json: "
-            f"mode={trading_mode}, orders={orders_enabled}"
-        )
-    except ImportError:
-        # Fallback to environment variables (legacy)
-        trading_mode = os.getenv("TRADING_MODE", "paper").lower()
-        orders_enabled_str = os.getenv("ORDERS_ENABLED", "false").lower()
-        orders_enabled = orders_enabled_str in ("true", "yes", "1")
-        live_trading_override_file = os.getenv("LIVE_TRADING_OVERRIDE_FILE")
-        logger.debug(
-            "mm-control not available, using environment variables for trading controls"
-        )
+    control_state = _load_control_state()
+    trading_mode = control_state.trading_mode
+    orders_enabled = control_state.orders_enabled
+    live_trading_override_file = control_state.live_trading_override_file
+    logger.debug(
+        "Loaded trading controls from control.json at %s: mode=%s, orders=%s",
+        get_control_path(),
+        trading_mode,
+        orders_enabled,
+    )
 
     # API Server
     api_port = runtime.api_port
@@ -193,9 +181,7 @@ def load_config() -> Config:
     run_window_days = runtime.run_window_days
     run_window_timezone = runtime.run_window_timezone
 
-    mm_control_base_dir = runtime.mm_control_base_dir
-    mm_control_enable_background_monitor = runtime.mm_control_enable_background_monitor
-    mm_control_ttl_check_interval = runtime.mm_control_ttl_check_interval
+    control_dir = runtime.control_dir
 
     admin_restart_enabled = runtime.admin_restart_enabled
 
@@ -224,9 +210,7 @@ def load_config() -> Config:
         run_window_end=run_window_end,
         run_window_days=run_window_days,
         run_window_timezone=run_window_timezone,
-        mm_control_base_dir=mm_control_base_dir,
-        mm_control_enable_background_monitor=mm_control_enable_background_monitor,
-        mm_control_ttl_check_interval=mm_control_ttl_check_interval,
+        control_dir=control_dir,
         admin_restart_enabled=admin_restart_enabled,
         live_trading_override_file=live_trading_override_file,
     )

@@ -8,7 +8,7 @@ This guide deploys the **mm-ibkr-gateway** as a production execution node on a W
 - **FastAPI REST API** (LAN-bound, API key protected, Windows service)
 - **NSSM service management** (auto-start on boot, auto-restart on failure)
 - **Time-windowed operation** (API enforces window internally, returns 503 outside hours)
-- **mm-control integration** (centralized trading control via control.json)
+- **control.json** (centralized trading control)
 
 A client on the same LAN connects to this node to execute trades.
 
@@ -34,7 +34,7 @@ A client on the same LAN connects to this node to execute trades.
 │  └─────────────────────────────────────────┘                    │
 │                                                                 │
 │  ┌─────────────────────────────────────────┐                    │
-│  │         mm-control                      │                    │
+│  │         Trading Control                 │                    │
 │  │  - control.json (trading config)        │                    │
 │  │  - control.log (audit)                  │                    │
 │  └─────────────────────────────────────────┘                    │
@@ -80,11 +80,11 @@ This deployment preserves ALL existing safety mechanisms:
 | API Key | Required | Authentication enforced |
 | Time Window | Weekdays 4-8 | Services only run during market hours |
 
-Trading controls are centralized in `C:\ProgramData\mm-control\control.json`.
+Trading controls are centralized in `C:\ProgramData\mm-ibkr-gateway\control.json`.
 
 **To enable order placement:**
 
-1. Use `mm-control` CLI or `set-control.ps1` to set `orders_enabled=true` and `dry_run=false`
+1. Use the operator UI or `PUT /admin/control` to set `orders_enabled=true` and `dry_run=false`
 2. For live trading, also set `trading_mode=live` and create the override file
 
 **Live trading is NOT enabled by this deployment.** Additional steps (documented separately) are required.
@@ -105,7 +105,7 @@ cd "C:\Users\mikae\Coding Projects\mm-ibkr-gateway\deploy\windows"
 This interactive script will:
 
 - Detect your LAN IP
-- Ask for allowed client IPs, storage path, IBKR credentials, time window, and mm-control settings
+- Ask for allowed client IPs, storage path, IBKR credentials, time window, and control.json location
 - Create a Python virtual environment and install required packages
 - Generate `config.json` (operational settings) and a minimal `.env` (secrets), then create required directories
 
@@ -198,8 +198,8 @@ Located in repo root `.env` file (secrets + optional overrides):
 | `ADMIN_TOKEN` | (unset) | Admin token for `/admin/*` endpoints |
 | `MM_IBKR_CONFIG_PATH` | (optional) | Override path to `config.json` |
 
-**Trading controls** (`trading_mode`, `orders_enabled`, `dry_run`) are managed via `C:\ProgramData\mm-control\control.json`.
-Use `mm-control status` or `set-control.ps1` to view/change these settings.
+**Trading controls** (`trading_mode`, `orders_enabled`, `dry_run`) are managed via `C:\ProgramData\mm-ibkr-gateway\control.json`.
+Use the operator UI or `PUT /admin/control` to view/change these settings.
 
 ### Runtime Settings (config.json)
 
@@ -228,6 +228,8 @@ Located at `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_
 | `run_window_days` | `Mon,Tue,Wed,Thu,Fri` | Active days |
 | `run_window_timezone` | `America/Toronto` | Timezone for schedule |
 
+Note: On Windows, timezone handling uses the `tzdata` package in the service venv. `configure.ps1` installs it. If you see "No time zone found with key ...", reinstall tzdata or recreate the venv.
+
 #### Path Settings
 
 | Key | Default | Description |
@@ -238,13 +240,11 @@ Located at `C:\ProgramData\mm-ibkr-gateway\config.json` (override with `MM_IBKR_
 | `watchdog_log_dir` | `C:\ProgramData\mm-ibkr-gateway\logs` | Watchdog log directory |
 | `ibkr_gateway_path` | (configured) | IBKR Gateway install path |
 
-#### mm-control Settings
+#### Control Settings
 
 | Key | Default | Description |
 | ---------- | --------- | ------------- |
-| `mm_control_base_dir` | `C:\ProgramData\mm-control` | Base directory for mm-control artifacts |
-| `mm_control_enable_background_monitor` | `true` | Enable background TTL monitor in API |
-| `mm_control_ttl_check_interval` | `30` | TTL check interval (seconds) |
+| `control_dir` | `C:\ProgramData\mm-ibkr-gateway` | Directory containing control.json and control.log |
 | `admin_restart_enabled` | `false` | Allow `/admin/restart` to restart services |
 
 ---
@@ -324,52 +324,51 @@ Both API and Gateway run as Windows services managed by NSSM (Non-Sucking Servic
 - Services run 24/7, managed by NSSM
 - API middleware checks time window on each request
 - Returns HTTP 503 Service Unavailable outside window
-- UI (`/ui`) and `/admin/status` are exempt so operators can view status outside the window
+- UI (`/ui`), `/admin/status`, and `/admin/audit-log` are exempt so operators can view status outside the window
 - No external polling or process management needed
 
 ---
 
-## mm-control Integration
+## Trading Control
 
-The deployment integrates with [mm-control](https://github.com/your-org/mm-control) for centralized trading control:
+Trading settings live in `C:\ProgramData\mm-ibkr-gateway\control.json` and are logged to
+`C:\ProgramData\mm-ibkr-gateway\control.log`.
 
 ### View Trading Status
 
 ```powershell
-# Via CLI
-mm-control status
+# Via UI
+Start-Process "http://localhost:8000/ui"
 
 # Via API endpoint
 Invoke-RestMethod -Uri "http://localhost:8000/admin/status"
 
 # Via control.json directly
-Get-Content "C:\ProgramData\mm-control\control.json" | ConvertFrom-Json
+Get-Content "C:\ProgramData\mm-ibkr-gateway\control.json" | ConvertFrom-Json
 ```
 
 ### Change Trading Settings
 
 ```powershell
-# Show current settings
-cd C:\Users\mikae\Coding Projects\mm-control\scripts
-.\set-control.ps1 -Show
-
-# Enable paper orders
-.\set-control.ps1 -OrdersEnabled $true -DryRun $false
-
-# Disable orders
-.\set-control.ps1 -OrdersEnabled $false
-
-# Switch to live mode (requires override file)
-.\set-control.ps1 -TradingMode live -OrdersEnabled $true -OverrideFile "C:\path\to\override.txt"
+# Example API update (from the same machine)
+$body = @{
+  reason = "Enable paper orders"
+  orders_enabled = $true
+  dry_run = $false
+} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Uri "http://localhost:8000/admin/control" `
+  -Headers @{ "X-Admin-Token" = "YOUR_TOKEN" } `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
 ### How It Works
 
-1. **control.json:** `C:\ProgramData\mm-control\control.json` is the source of truth for trading settings
+1. **control.json:** `C:\ProgramData\mm-ibkr-gateway\control.json` is the source of truth
 2. **Settings:** `trading_mode`, `orders_enabled`, `dry_run`, `live_trading_override_file`
 3. **Safe Defaults:** paper mode, orders disabled, dry-run enabled when file missing
 4. **Override File:** Required only when `trading_mode=live` AND `orders_enabled=true`
-5. **Audit Log:** All changes logged to `C:\ProgramData\mm-control\control.log`
+5. **Audit Log:** All changes logged to `C:\ProgramData\mm-ibkr-gateway\control.log`
 
 ---
 
@@ -655,8 +654,15 @@ curl -H "X-API-Key: $IBKR_API_KEY" http://<laptop-ip>:8000/health
 When ready to enable order placement:
 
 ```powershell
-cd C:\Users\mikae\Coding Projects\mm-control\scripts
-.\set-control.ps1 -OrdersEnabled $true -DryRun $false
+$body = @{
+  reason = "Enable paper orders"
+  orders_enabled = $true
+  dry_run = $false
+} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Uri "http://localhost:8000/admin/control" `
+  -Headers @{ "X-Admin-Token" = "YOUR_TOKEN" } `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
 ### 5. Monitor First Full Day
@@ -681,17 +687,20 @@ Get-Content "C:\ProgramData\mm-ibkr-gateway\storage\logs\api.log" -Wait
 
 ## Enabling Orders (paper) and Switching to Live
 
-Trading controls are managed via `control.json`. Use the CLI or PowerShell helper:
+Trading controls are managed via `control.json`. Use the operator UI or /admin/control:
 
 ### Enable Paper Orders
 
 ```powershell
-# Using set-control.ps1
-cd C:\Users\mikae\Coding Projects\mm-control\scripts
-.\set-control.ps1 -OrdersEnabled $true -DryRun $false
-
-# Or using mm-control CLI
-mm-control status  # Verify current settings
+$body = @{
+  reason = "Enable paper orders"
+  orders_enabled = $true
+  dry_run = $false
+} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Uri "http://localhost:8000/admin/control" `
+  -Headers @{ "X-Admin-Token" = "YOUR_TOKEN" } `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
 No API restart required - services read control.json on each request.
@@ -699,11 +708,21 @@ No API restart required - services read control.json on each request.
 ### Switch to Live Trading
 
 ```powershell
-# 1. Create override file (physical guard for live mode)
-New-Item -Path "C:\ProgramData\mm-control\live_override.txt" -ItemType File
+# 1. Create override file (required for live+enabled)
+New-Item -Path "C:\ProgramData\mm-ibkr-gateway\live_override.txt" -ItemType File
 
 # 2. Update control.json
-.\set-control.ps1 -TradingMode live -OrdersEnabled $true -OverrideFile "C:\ProgramData\mm-control\live_override.txt"
+$body = @{
+  reason = "Enable live trading"
+  trading_mode = "live"
+  orders_enabled = $true
+  dry_run = $false
+  live_trading_override_file = "C:\\ProgramData\\mm-ibkr-gateway\\live_override.txt"
+} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Uri "http://localhost:8000/admin/control" `
+  -Headers @{ "X-Admin-Token" = "YOUR_TOKEN" } `
+  -ContentType "application/json" `
+  -Body $body
 
 # 3. Ensure IBKR live connection settings are correct in config.json
 #    (live_gateway_port, live_client_id)
@@ -714,7 +733,6 @@ Restart-Service mm-ibkr-api
 
 # 5. Verify via status
 .\status.ps1
-mm-control status
 ```
 
 ---
