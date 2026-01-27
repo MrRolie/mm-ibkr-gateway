@@ -175,6 +175,12 @@ class OrderSpec(BaseModel):
     """
 
     accountId: Optional[str] = Field(None, description="Target account for the order.")
+    strategyId: Optional[str] = Field(
+        None, description="Strategy identifier for virtual subaccount tracking."
+    )
+    virtualSubaccountId: Optional[str] = Field(
+        None, description="Virtual subaccount identifier for allocation tracking."
+    )
     instrument: SymbolSpec = Field(..., description="Instrument to trade.")
     side: str = Field(..., description="Order side.")
     quantity: float = Field(

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 DEFAULT_DB_PATH = "./data/audit.db"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def get_db_path() -> str:
@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     event_data TEXT NOT NULL,
     user_context TEXT,
     account_id TEXT,
+    strategy_id TEXT,
+    virtual_subaccount_id TEXT,
     UNIQUE(correlation_id, event_type, timestamp)
 );
 
@@ -103,6 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_log(correlation_id);
 CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_account ON audit_log(account_id);
+CREATE INDEX IF NOT EXISTS idx_audit_strategy ON audit_log(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_audit_virtual_subaccount ON audit_log(virtual_subaccount_id);
 """
 
 ORDER_HISTORY_SCHEMA = """
@@ -110,6 +114,8 @@ CREATE TABLE IF NOT EXISTS order_history (
     order_id TEXT PRIMARY KEY,
     correlation_id TEXT,
     account_id TEXT NOT NULL,
+    strategy_id TEXT,
+    virtual_subaccount_id TEXT,
     symbol TEXT NOT NULL,
     side TEXT NOT NULL,
     quantity REAL NOT NULL,
@@ -131,6 +137,8 @@ CREATE INDEX IF NOT EXISTS idx_order_symbol ON order_history(symbol);
 CREATE INDEX IF NOT EXISTS idx_order_status ON order_history(status);
 CREATE INDEX IF NOT EXISTS idx_order_placed_at ON order_history(placed_at);
 CREATE INDEX IF NOT EXISTS idx_order_ibkr_id ON order_history(ibkr_order_id);
+CREATE INDEX IF NOT EXISTS idx_order_strategy ON order_history(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_order_virtual_subaccount ON order_history(virtual_subaccount_id);
 """
 
 SCHEMA_VERSION_TABLE = """
@@ -139,6 +147,68 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT NOT NULL
 );
 """
+
+
+def _table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _get_table_columns(cursor: sqlite3.Cursor, table_name: str) -> set[str]:
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row["name"] for row in cursor.fetchall()}
+
+
+def _add_column_if_missing(
+    cursor: sqlite3.Cursor,
+    table_name: str,
+    column_name: str,
+    column_def: str,
+) -> bool:
+    columns = _get_table_columns(cursor, table_name)
+    if column_name in columns:
+        return False
+    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
+    return True
+
+
+def _migrate_to_v2(cursor: sqlite3.Cursor) -> None:
+    """
+    Migrate database to schema version 2.
+
+    Changes:
+    - Add strategy_id and virtual_subaccount_id columns to audit_log
+    - Add strategy_id and virtual_subaccount_id columns to order_history
+    """
+    log_with_context(logger, logging.INFO, "Migrating audit database to schema version 2")
+
+    if _table_exists(cursor, "audit_log"):
+        _add_column_if_missing(cursor, "audit_log", "strategy_id", "TEXT")
+        _add_column_if_missing(cursor, "audit_log", "virtual_subaccount_id", "TEXT")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_strategy ON audit_log(strategy_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_virtual_subaccount ON audit_log(virtual_subaccount_id)"
+        )
+
+    if _table_exists(cursor, "order_history"):
+        _add_column_if_missing(cursor, "order_history", "strategy_id", "TEXT")
+        _add_column_if_missing(cursor, "order_history", "virtual_subaccount_id", "TEXT")
+        cursor.execute(
+            """
+            UPDATE order_history
+            SET virtual_subaccount_id = COALESCE(virtual_subaccount_id, strategy_id)
+            WHERE virtual_subaccount_id IS NULL
+            """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_order_strategy ON order_history(strategy_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_order_virtual_subaccount ON order_history(virtual_subaccount_id)"
+        )
 
 
 def init_database(db_path: Optional[str] = None) -> None:
@@ -172,6 +242,8 @@ def init_database(db_path: Optional[str] = None) -> None:
         current_version = row["version"] if row else 0
 
         if current_version < SCHEMA_VERSION:
+            if current_version < 2:
+                _migrate_to_v2(cursor)
             # Apply schema
             cursor.executescript(AUDIT_LOG_SCHEMA)
             cursor.executescript(ORDER_HISTORY_SCHEMA)
@@ -211,6 +283,8 @@ def record_audit_event(
     correlation_id: Optional[str] = None,
     user_context: Optional[Dict[str, Any]] = None,
     account_id: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    virtual_subaccount_id: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> int:
     """
@@ -222,6 +296,8 @@ def record_audit_event(
         correlation_id: Optional correlation ID (uses current context if not provided)
         user_context: Optional user/session context (API key, IP, etc.)
         account_id: Optional account ID for multi-account tracking
+        strategy_id: Optional strategy identifier for virtual subaccount tracking
+        virtual_subaccount_id: Optional virtual subaccount identifier
         db_path: Optional database path override
 
     Returns:
@@ -240,19 +316,61 @@ def record_audit_event(
 
     timestamp = datetime.utcnow().isoformat()
 
+    # Extract strategy metadata from the event payload when present
+    if strategy_id is None:
+        strategy_id = event_data.get("strategyId") or event_data.get("strategy_id")
+    if virtual_subaccount_id is None:
+        virtual_subaccount_id = event_data.get("virtualSubaccountId") or event_data.get(
+            "virtual_subaccount_id"
+        )
+    if virtual_subaccount_id is None:
+        virtual_subaccount_id = strategy_id
+
+    # Try to resolve missing metadata from order_history when order_id is provided
+    order_id = event_data.get("order_id") or event_data.get("orderId")
+
     # Serialize data
     event_data_json = json.dumps(event_data)
     user_context_json = json.dumps(user_context) if user_context else None
 
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
+
+        if order_id and (strategy_id is None or virtual_subaccount_id is None):
+            try:
+                cursor.execute(
+                    "SELECT strategy_id, virtual_subaccount_id FROM order_history WHERE order_id = ?",
+                    (order_id,),
+                )
+                order_row = cursor.fetchone()
+                if order_row:
+                    if strategy_id is None:
+                        strategy_id = order_row["strategy_id"]
+                    if virtual_subaccount_id is None:
+                        virtual_subaccount_id = order_row["virtual_subaccount_id"]
+            except sqlite3.OperationalError:
+                # order_history may not exist yet during first-run initialization
+                pass
+
         cursor.execute(
             """
             INSERT INTO audit_log
-            (correlation_id, timestamp, event_type, event_data, user_context, account_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (
+                correlation_id, timestamp, event_type, event_data,
+                user_context, account_id, strategy_id, virtual_subaccount_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (correlation_id, timestamp, event_type, event_data_json, user_context_json, account_id),
+            (
+                correlation_id,
+                timestamp,
+                event_type,
+                event_data_json,
+                user_context_json,
+                account_id,
+                strategy_id,
+                virtual_subaccount_id,
+            ),
         )
 
         log_with_context(
@@ -262,6 +380,8 @@ def record_audit_event(
             event_type=event_type,
             audit_id=cursor.lastrowid,
             account_id=account_id,
+            strategy_id=strategy_id,
+            virtual_subaccount_id=virtual_subaccount_id,
         )
 
         return cursor.lastrowid
@@ -276,6 +396,8 @@ def query_audit_log(
     limit: int = 100,
     offset: int = 0,
     db_path: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    virtual_subaccount_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Query audit log with filters.
@@ -289,6 +411,8 @@ def query_audit_log(
         limit: Maximum number of results
         offset: Offset for pagination
         db_path: Optional database path override
+        strategy_id: Filter by strategy identifier
+        virtual_subaccount_id: Filter by virtual subaccount identifier
 
     Returns:
         List of audit log records as dictionaries
@@ -307,6 +431,14 @@ def query_audit_log(
     if account_id:
         query += " AND account_id = ?"
         params.append(account_id)
+
+    if strategy_id:
+        query += " AND strategy_id = ?"
+        params.append(strategy_id)
+
+    if virtual_subaccount_id:
+        query += " AND virtual_subaccount_id = ?"
+        params.append(virtual_subaccount_id)
 
     if start_time:
         query += " AND timestamp >= ?"
@@ -355,6 +487,8 @@ def save_order(
     config_snapshot: Optional[Dict[str, Any]] = None,
     market_snapshot: Optional[Dict[str, Any]] = None,
     db_path: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    virtual_subaccount_id: Optional[str] = None,
 ) -> None:
     """
     Save or update order in order history.
@@ -374,10 +508,15 @@ def save_order(
         config_snapshot: Configuration at order time (TRADING_MODE, ORDERS_ENABLED, etc.)
         market_snapshot: Market conditions at order time (quote data)
         db_path: Optional database path override
+        strategy_id: Optional strategy identifier for virtual subaccount tracking
+        virtual_subaccount_id: Optional virtual subaccount identifier
     """
     # Get correlation ID from context if not provided
     if correlation_id is None:
         correlation_id = get_correlation_id()
+
+    if virtual_subaccount_id is None:
+        virtual_subaccount_id = strategy_id
 
     timestamp = datetime.utcnow().isoformat()
 
@@ -401,10 +540,21 @@ def save_order(
                 UPDATE order_history
                 SET status = ?, updated_at = ?, ibkr_order_id = ?,
                     fill_data = COALESCE(?, fill_data),
-                    correlation_id = COALESCE(?, correlation_id)
+                    correlation_id = COALESCE(?, correlation_id),
+                    strategy_id = COALESCE(?, strategy_id),
+                    virtual_subaccount_id = COALESCE(?, virtual_subaccount_id)
                 WHERE order_id = ?
                 """,
-                (status, timestamp, ibkr_order_id, fill_json, correlation_id, order_id),
+                (
+                    status,
+                    timestamp,
+                    ibkr_order_id,
+                    fill_json,
+                    correlation_id,
+                    strategy_id,
+                    virtual_subaccount_id,
+                    order_id,
+                ),
             )
 
             log_with_context(
@@ -420,15 +570,19 @@ def save_order(
             cursor.execute(
                 """
                 INSERT INTO order_history
-                (order_id, correlation_id, account_id, symbol, side, quantity,
-                 order_type, status, placed_at, updated_at, ibkr_order_id,
-                 preview_data, fill_data, config_snapshot, market_snapshot)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (
+                    order_id, correlation_id, account_id, strategy_id, virtual_subaccount_id,
+                    symbol, side, quantity, order_type, status, placed_at, updated_at,
+                    ibkr_order_id, preview_data, fill_data, config_snapshot, market_snapshot
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id,
                     correlation_id,
                     account_id,
+                    strategy_id,
+                    virtual_subaccount_id,
                     symbol,
                     side,
                     quantity,
@@ -560,6 +714,8 @@ def query_orders(
     limit: int = 100,
     offset: int = 0,
     db_path: Optional[str] = None,
+    strategy_id: Optional[str] = None,
+    virtual_subaccount_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Query orders with filters.
@@ -574,6 +730,8 @@ def query_orders(
         limit: Maximum number of results
         offset: Offset for pagination
         db_path: Optional database path override
+        strategy_id: Filter by strategy identifier
+        virtual_subaccount_id: Filter by virtual subaccount identifier
 
     Returns:
         List of order records as dictionaries
@@ -596,6 +754,14 @@ def query_orders(
     if correlation_id:
         query += " AND correlation_id = ?"
         params.append(correlation_id)
+
+    if strategy_id:
+        query += " AND strategy_id = ?"
+        params.append(strategy_id)
+
+    if virtual_subaccount_id:
+        query += " AND virtual_subaccount_id = ?"
+        params.append(virtual_subaccount_id)
 
     if start_time:
         query += " AND placed_at >= ?"

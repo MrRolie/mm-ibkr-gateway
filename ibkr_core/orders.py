@@ -883,8 +883,13 @@ def preview_order(
                     "estimated_price": estimated_price,
                     "estimated_notional": estimated_notional,
                     "legs_count": len(legs) if legs else 0,
+                    "strategy_id": order_spec.strategyId,
+                    "virtual_subaccount_id": order_spec.virtualSubaccountId
+                    or order_spec.strategyId,
                 },
                 account_id=order_spec.accountId,
+                strategy_id=order_spec.strategyId,
+                virtual_subaccount_id=order_spec.virtualSubaccountId,
             )
         except Exception as e:
             logger.warning(f"Failed to record preview audit event: {e}")
@@ -1045,6 +1050,8 @@ def place_order(
                 ibkr_order_id=str(trade.order.orderId) if trade.order.orderId else None,
                 preview_data=preview.model_dump() if preview else None,
                 config_snapshot=config_snapshot,
+                strategy_id=order_spec.strategyId,
+                virtual_subaccount_id=order_spec.virtualSubaccountId,
             )
 
             # Record audit event
@@ -1059,10 +1066,15 @@ def place_order(
                     "order_type": order_spec.orderType,
                     "status": order_status.status,
                     "result_status": result_status,
+                    "strategy_id": order_spec.strategyId,
+                    "virtual_subaccount_id": order_spec.virtualSubaccountId
+                    or order_spec.strategyId,
                 },
                 account_id=order_spec.accountId or client.managed_accounts[0]
                 if client.managed_accounts
                 else None,
+                strategy_id=order_spec.strategyId,
+                virtual_subaccount_id=order_spec.virtualSubaccountId,
             )
         except Exception as e:
             logger.warning(f"Failed to record order placement in audit: {e}")

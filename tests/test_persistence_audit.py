@@ -20,7 +20,9 @@ from ibkr_core.persistence import (
     get_database_stats,
     init_database,
     query_audit_log,
+    query_orders,
     record_audit_event,
+    save_order,
 )
 
 
@@ -83,6 +85,21 @@ class TestAuditEventRecording:
         events = query_audit_log(account_id="DU12345", db_path=temp_db)
         assert len(events) == 1
         assert events[0]["account_id"] == "DU12345"
+
+    def test_record_event_with_strategy_metadata(self, temp_db):
+        """Strategy metadata should be stored and queryable."""
+        record_audit_event(
+            event_type="ORDER_PREVIEW",
+            event_data={"symbol": "AAPL", "quantity": 100},
+            strategy_id="pe_rebalance",
+            virtual_subaccount_id="pe_rebalance",
+            db_path=temp_db,
+        )
+
+        events = query_audit_log(strategy_id="pe_rebalance", db_path=temp_db)
+        assert len(events) == 1
+        assert events[0]["strategy_id"] == "pe_rebalance"
+        assert events[0]["virtual_subaccount_id"] == "pe_rebalance"
 
     def test_record_event_with_user_context(self, temp_db):
         """Test recording event with user context."""
@@ -211,6 +228,55 @@ class TestAuditLogQuerying:
         assert "symbol" in event["event_data"]
 
 
+class TestOrderStrategyPersistence:
+    """Test persistence of strategy/virtual subaccount metadata."""
+
+    def test_save_order_with_strategy_metadata(self, temp_db):
+        """Order history should store strategy metadata."""
+        save_order(
+            order_id="ord-100",
+            account_id="DU12345",
+            symbol="AAPL",
+            side="BUY",
+            quantity=10,
+            order_type="MKT",
+            status="SUBMITTED",
+            strategy_id="pe_rebalance",
+            virtual_subaccount_id="pe_rebalance",
+            db_path=temp_db,
+        )
+
+        orders = query_orders(strategy_id="pe_rebalance", db_path=temp_db)
+        assert len(orders) == 1
+        assert orders[0]["strategy_id"] == "pe_rebalance"
+        assert orders[0]["virtual_subaccount_id"] == "pe_rebalance"
+
+    def test_audit_event_inherits_strategy_from_order(self, temp_db):
+        """Audit events should resolve strategy metadata from order history."""
+        save_order(
+            order_id="ord-101",
+            account_id="DU12345",
+            symbol="MSFT",
+            side="SELL",
+            quantity=5,
+            order_type="MKT",
+            status="SUBMITTED",
+            strategy_id="intraday_reversion",
+            virtual_subaccount_id="intraday_reversion",
+            db_path=temp_db,
+        )
+
+        record_audit_event(
+            event_type="ORDER_CANCELLED",
+            event_data={"order_id": "ord-101"},
+            db_path=temp_db,
+        )
+
+        events = query_audit_log(strategy_id="intraday_reversion", db_path=temp_db)
+        assert len(events) == 1
+        assert events[0]["strategy_id"] == "intraday_reversion"
+
+
 class TestDatabaseStats:
     """Test database statistics."""
 
@@ -226,7 +292,7 @@ class TestDatabaseStats:
 
             assert stats["audit_log_count"] == 0
             assert stats["order_history_count"] == 0
-            assert stats["schema_version"] == 1
+            assert stats["schema_version"] == 2
             assert stats["db_size_bytes"] > 0  # File exists
         finally:
             if os.path.exists(fresh_db):
@@ -279,7 +345,7 @@ class TestDatabaseInitialization:
 
         # Should still work
         stats = get_database_stats(temp_db)
-        assert stats["schema_version"] == 1
+        assert stats["schema_version"] == 2
 
     def test_schema_version_recorded(self, temp_db):
         """Test that schema version is recorded."""
@@ -292,6 +358,6 @@ class TestDatabaseInitialization:
         row = cursor.fetchone()
 
         assert row is not None
-        assert row[0] == 1
+        assert row[0] == 2
 
         conn.close()
