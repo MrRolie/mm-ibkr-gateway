@@ -170,6 +170,12 @@ class OrderRequest(BaseModel):
     """
 
     accountId: Optional[str] = Field(None, description="Target account")
+    strategyId: Optional[str] = Field(
+        None, description="Strategy identifier for virtual subaccount tracking."
+    )
+    virtualSubaccountId: Optional[str] = Field(
+        None, description="Virtual subaccount identifier for allocation tracking."
+    )
     instrument: SymbolSpec = Field(..., description="Instrument to trade")
     side: str = Field(..., description="Order side: BUY or SELL")
     quantity: float = Field(..., gt=0, description="Order quantity")
@@ -219,6 +225,8 @@ class OrderRequest(BaseModel):
         """Convert to OrderSpec for ibkr_core."""
         return OrderSpec(
             accountId=self.accountId,
+            strategyId=self.strategyId,
+            virtualSubaccountId=self.virtualSubaccountId,
             instrument=self.instrument,
             side=self.side,
             quantity=self.quantity,
@@ -265,6 +273,12 @@ class OrderPreviewRequest(BaseModel):
     """
 
     accountId: Optional[str] = Field(None, description="Target account")
+    strategyId: Optional[str] = Field(
+        None, description="Strategy identifier for virtual subaccount tracking."
+    )
+    virtualSubaccountId: Optional[str] = Field(
+        None, description="Virtual subaccount identifier for allocation tracking."
+    )
     instrument: SymbolSpec = Field(..., description="Instrument to trade")
     side: str = Field(..., description="Order side: BUY or SELL")
     quantity: float = Field(..., gt=0, description="Order quantity")
@@ -312,6 +326,8 @@ class OrderPreviewRequest(BaseModel):
         """Convert to OrderSpec for ibkr_core."""
         return OrderSpec(
             accountId=self.accountId,
+            strategyId=self.strategyId,
+            virtualSubaccountId=self.virtualSubaccountId,
             instrument=self.instrument,
             side=self.side,
             quantity=self.quantity,
