@@ -10,6 +10,9 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      POETRY_VIRTUALENVS_CREATE: "true"
+      POETRY_VIRTUALENVS_IN_PROJECT: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -19,42 +22,43 @@ jobs:
           python-version: '3.10'
 
       - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.7.1
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry==2.2.1
 
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
+        run: python -m poetry install --no-interaction --no-root
 
       - name: Install project
-        run: poetry install --no-interaction
+        run: python -m poetry install --no-interaction
 
       - name: Run black
-        run: poetry run black --check .
+        run: python -m poetry run black --check .
 
       - name: Run isort
-        run: poetry run isort --check-only .
+        run: python -m poetry run isort --check-only .
 
       - name: Run flake8
-        run: poetry run flake8 ibkr_core api mcp_server
+        run: python -m poetry run flake8 ibkr_core api mcp_server
 
       - name: Run mypy
-        run: poetry run mypy ibkr_core api mcp_server
+        run: python -m poetry run mypy ibkr_core api mcp_server
         continue-on-error: true  # Mypy is informational for now
 
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      POETRY_VIRTUALENVS_CREATE: "true"
+      POETRY_VIRTUALENVS_IN_PROJECT: "true"
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
@@ -68,29 +72,27 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.7.1
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry==2.2.1
 
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
+        run: python -m poetry install --no-interaction --no-root
 
       - name: Install project
-        run: poetry install --no-interaction
+        run: python -m poetry install --no-interaction
 
       - name: Run unit tests with coverage
         run: |
-          poetry run pytest \
+          python -m poetry run pytest \
             -m "not integration" \
             --cov=ibkr_core \
             --cov=api \
@@ -112,6 +114,9 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    env:
+      POETRY_VIRTUALENVS_CREATE: "true"
+      POETRY_VIRTUALENVS_IN_PROJECT: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -121,15 +126,17 @@ jobs:
           python-version: '3.10'
 
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry==2.2.1
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: python -m poetry install --no-interaction
 
       - name: Run safety check
-        run: poetry run safety check --json
+        run: python -m poetry run safety check --json
         continue-on-error: true
 
       - name: Run bandit
-        run: poetry run bandit -r ibkr_core api mcp_server -ll
+        run: python -m poetry run bandit -r ibkr_core api mcp_server -ll
         continue-on-error: true
