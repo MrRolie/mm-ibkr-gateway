@@ -17,8 +17,12 @@ Usage:
         -d '{"reason": "Maintenance complete", "orders_enabled": true}'
 """
 
+import asyncio
+import contextvars
 import logging
 import os
+import random
+import time
 from dataclasses import replace
 from typing import Any, Dict, Literal, Optional
 
@@ -26,6 +30,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
+from api.dependencies import (
+    IBKRClientManager,
+    RequestContext,
+    get_client_manager,
+    get_ibkr_executor,
+    get_request_context,
+    get_request_timeout,
+    log_request,
+)
+from api.errors import APIError, ErrorCode, map_ibkr_exception
 from ibkr_core.config import reset_config
 from ibkr_core.control import (
     get_audit_log_path,
@@ -64,6 +78,20 @@ class AdminStatusResponse(BaseModel):
     is_live_trading_enabled: bool = Field(..., description="True if live+enabled")
     validation_errors: list[str] = Field(default_factory=list, description="Control validation errors")
     control_path: str = Field(..., description="Path to control.json")
+
+
+class GatewayVerificationResponse(BaseModel):
+    """Response from gateway verification endpoint."""
+
+    success: bool = Field(..., description="Whether the gateway verification succeeded")
+    message: str = Field(..., description="Human-readable status message")
+    verification_mode: str = Field(..., description="Verification mode: direct or pooled")
+    account_id: Optional[str] = Field(None, description="Account ID used for verification")
+    net_liquidation: Optional[float] = Field(None, description="Net liquidation value from summary")
+    currency: Optional[str] = Field(None, description="Account currency")
+    summary_timestamp: Optional[str] = Field(None, description="Account summary timestamp (ISO 8601)")
+    elapsed_ms: Optional[float] = Field(None, description="Verification duration in milliseconds")
+    client_id: Optional[int] = Field(None, description="Client ID used for verification")
 
 
 
@@ -240,6 +268,55 @@ async def verify_localhost_only(request: Request) -> None:
         )
 
 
+async def _execute_ibkr_admin_operation(
+    client_manager: IBKRClientManager,
+    operation: callable,
+    ctx: RequestContext,
+    timeout_s: Optional[float] = None,
+    *args,
+    **kwargs,
+):
+    """
+    Execute an IBKR operation for admin endpoints with timeout and error mapping.
+    """
+    if timeout_s is None:
+        timeout_s = get_request_timeout()
+
+    try:
+        client = await client_manager.get_client()
+        loop = asyncio.get_running_loop()
+        ctx_vars = contextvars.copy_context()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                get_ibkr_executor(),
+                lambda: ctx_vars.run(operation, client, *args, **kwargs),
+            ),
+            timeout=timeout_s,
+        )
+        log_request(ctx, status="success")
+        return result
+
+    except asyncio.TimeoutError:
+        log_request(ctx, status="timeout", error="Request timed out")
+        raise APIError(
+            ErrorCode.TIMEOUT,
+            f"Request timed out after {timeout_s}s",
+            status_code=504,
+        )
+    except APIError as exc:
+        log_request(ctx, status="error", error=str(exc))
+        raise
+    except Exception as exc:
+        log_request(ctx, status="error", error=str(exc))
+        raise map_ibkr_exception(exc)
+
+
+def _generate_direct_client_id() -> int:
+    """Generate a random high client ID to avoid collisions with pooled clients."""
+    rng = random.SystemRandom()
+    return rng.randint(7000, 9999)
+
+
 # Create router with admin prefix
 router = APIRouter(
     prefix="/admin",
@@ -288,6 +365,108 @@ async def get_admin_status() -> AdminStatusResponse:
                 "message": f"Failed to get status: {str(e)}",
             },
         )
+
+
+@router.get(
+    "/gateway/verify",
+    response_model=GatewayVerificationResponse,
+    summary="Verify gateway access via account summary",
+    description=(
+        "Fetch an account summary from IBKR to verify the Gateway is running "
+        "and accessible. Requires admin token and localhost access."
+    ),
+    responses={
+        401: {"description": "Missing or invalid admin token"},
+        403: {"description": "Admin API disabled or non-localhost request"},
+        500: {"description": "Gateway verification failed"},
+        504: {"description": "Gateway verification timed out"},
+    },
+)
+async def verify_gateway_access(
+    account_id: Optional[str] = None,
+    mode: Literal["direct", "pooled"] = "direct",
+    ctx: RequestContext = Depends(get_request_context),
+    client_manager: IBKRClientManager = Depends(get_client_manager),
+) -> GatewayVerificationResponse:
+    """
+    Verify gateway access by retrieving account summary.
+    """
+    from ibkr_core.account import get_account_summary as ibkr_get_summary
+    from ibkr_core.client import IBKRClient
+
+    start_time = time.time()
+
+    mode_value = mode.lower().strip()
+    if mode_value not in ("direct", "pooled"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_VERIFY_MODE",
+                "message": "mode must be 'direct' or 'pooled'",
+            },
+        )
+
+    client_id = None
+
+    if mode_value == "direct":
+        client_id = _generate_direct_client_id()
+        timeout_s = get_request_timeout()
+        connect_timeout = int(min(10, max(5, timeout_s)))
+
+        def _direct_summary():
+            client = IBKRClient(client_id=client_id)
+            try:
+                client.connect(timeout=connect_timeout)
+                return ibkr_get_summary(client, account_id=account_id)
+            finally:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
+
+        try:
+            loop = asyncio.get_running_loop()
+            ctx_vars = contextvars.copy_context()
+            summary = await asyncio.wait_for(
+                loop.run_in_executor(
+                    get_ibkr_executor(),
+                    lambda: ctx_vars.run(_direct_summary),
+                ),
+                timeout=timeout_s,
+            )
+            log_request(ctx, status="success")
+        except asyncio.TimeoutError:
+            log_request(ctx, status="timeout", error="Request timed out")
+            raise APIError(
+                ErrorCode.TIMEOUT,
+                f"Request timed out after {timeout_s}s",
+                status_code=504,
+            )
+        except APIError:
+            log_request(ctx, status="error", error="Gateway verification failed")
+            raise
+        except Exception as exc:
+            log_request(ctx, status="error", error=str(exc))
+            raise map_ibkr_exception(exc)
+    else:
+        def _get_summary(client):
+            return ibkr_get_summary(client, account_id=account_id)
+
+        summary = await _execute_ibkr_admin_operation(client_manager, _get_summary, ctx)
+
+    elapsed_ms = round((time.time() - start_time) * 1000, 2)
+
+    return GatewayVerificationResponse(
+        success=True,
+        message="Gateway verified via account summary.",
+        verification_mode=mode_value,
+        account_id=summary.accountId,
+        net_liquidation=summary.netLiquidation,
+        currency=summary.currency,
+        summary_timestamp=summary.timestamp.isoformat() if summary.timestamp else None,
+        elapsed_ms=elapsed_ms,
+        client_id=client_id,
+    )
 
 
 @router.put(

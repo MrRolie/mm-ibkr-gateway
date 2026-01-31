@@ -217,11 +217,15 @@ class TimeWindowMiddleware(BaseHTTPMiddleware):
             "/admin/status",
             "/admin/audit-log",
             "/admin/control",
+            "/admin/gateway/verify",
             "/ui",
             "/docs",
             "/openapi.json",
         ]
-        if any(request.url.path.startswith(path) for path in exempt_paths):
+        path = request.url.path
+        if any(path.startswith(path_prefix) for path_prefix in exempt_paths):
+            return await call_next(request)
+        if "/admin/gateway/verify" in path:
             return await call_next(request)
 
         # Check if we're in the run window

@@ -30,6 +30,8 @@ const elements = {
     // Status
     statusValue: document.getElementById('status-value'),
     tradingMode: document.getElementById('trading-mode'),
+    verifyGatewayBtn: document.getElementById('verify-gateway-btn'),
+    verifyGatewayStatus: document.getElementById('verify-gateway-status'),
 
     // Control.json
     controlTradingMode: document.getElementById('control-trading-mode'),
@@ -87,6 +89,9 @@ function setupEventListeners() {
     }
     if (elements.refreshControlBtn) {
         elements.refreshControlBtn.addEventListener('click', fetchControlSettings);
+    }
+    if (elements.verifyGatewayBtn) {
+        elements.verifyGatewayBtn.addEventListener('click', verifyGatewayAccess);
     }
 
     // Modal
@@ -329,6 +334,41 @@ async function fetchControlSettings() {
         }
         setConnectionStatus(false);
         console.error('Failed to fetch control settings:', error);
+    }
+}
+
+async function verifyGatewayAccess() {
+    if (!elements.verifyGatewayStatus || !elements.verifyGatewayBtn) return;
+
+    elements.verifyGatewayStatus.textContent = 'Verifying gateway access...';
+    elements.verifyGatewayStatus.className = 'status-text';
+    elements.verifyGatewayBtn.disabled = true;
+
+    try {
+        const data = await apiCall('/admin/gateway/verify?mode=direct');
+        const accountId = data.account_id || 'unknown';
+        const currency = data.currency || '';
+        const netLiquidation = typeof data.net_liquidation === 'number'
+            ? formatMoney(data.net_liquidation, currency)
+            : '--';
+        const summaryTimestamp = data.summary_timestamp
+            ? formatDateTime(data.summary_timestamp)
+            : '--';
+        const elapsed = typeof data.elapsed_ms === 'number'
+            ? `${Math.round(data.elapsed_ms)} ms`
+            : '--';
+
+        const message = data.message || 'Gateway verified.';
+        const modeLabel = data.verification_mode ? data.verification_mode.toUpperCase() : 'DIRECT';
+        const clientIdLabel = data.client_id ? ` | client_id ${data.client_id}` : '';
+        elements.verifyGatewayStatus.textContent = `${message} ${modeLabel}${clientIdLabel} | Account ${accountId} | NLV ${netLiquidation} | ${summaryTimestamp} | ${elapsed}`;
+        elements.verifyGatewayStatus.className = 'status-text success';
+        hideRunWindowBanner();
+    } catch (error) {
+        elements.verifyGatewayStatus.textContent = `Verification failed: ${error.message}`;
+        elements.verifyGatewayStatus.className = 'status-text error';
+    } finally {
+        elements.verifyGatewayBtn.disabled = false;
     }
 }
 
@@ -583,4 +623,19 @@ function formatDuration(seconds) {
         return `${hours} hour${hours !== 1 ? 's' : ''}`;
     }
     return `${hours}h ${remainingMinutes}m`;
+}
+
+function formatMoney(value, currency) {
+    if (typeof value !== 'number') return '--';
+    if (currency) {
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency,
+            }).format(value);
+        } catch {
+            // Fallback to plain number formatting below.
+        }
+    }
+    return value.toFixed(2);
 }

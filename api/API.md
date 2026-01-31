@@ -63,6 +63,16 @@ Admin endpoints are **localhost-only** and require `ADMIN_TOKEN`.
 - `GET /admin/config` returns the current `config.json` data.
 - `PUT /admin/config` updates operational settings in `config.json` (returns `restart_required` when a restart is needed).
 - `POST /admin/restart` requires `admin_restart_enabled=true` in `config.json`.
+- `GET /admin/gateway/verify` verifies gateway access by fetching an account summary.
+  - Query param `mode=direct|pooled` (default: `direct`).
+  - `direct` spins up a temporary IBKR client with a random high client ID and disconnects after the check.
+
+Example:
+
+```bash
+curl -H "X-Admin-Token: your-admin-secret-token" \
+  "http://localhost:8000/admin/gateway/verify?mode=direct"
+```
 
 ## Endpoints
 

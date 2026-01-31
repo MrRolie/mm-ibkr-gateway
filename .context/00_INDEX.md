@@ -195,6 +195,8 @@ mm-ibkr-gateway/
 | **CLI** | `poetry run ibkr-gateway healthcheck` | Verify connection to IBKR Gateway |
 | **CLI** | `poetry run ibkr-gateway demo` | Interactive 5-min walkthrough (quotes, account, positions) |
 | **CLI** | `poetry run ibkr-gateway start-api` | Launch REST API on port 8000 |
+| **Admin UI** | `http://localhost:8000/ui` | Operator dashboard (includes Gateway verification via account summary) |
+| **Admin API** | `GET http://localhost:8000/admin/gateway/verify?mode=direct` | Verify Gateway access via direct account summary (random high client_id) |
 | **REST API** | `POST http://localhost:8000/api/orders/place` | Place order (subject to 5 gates) |
 | **REST API** | `GET http://localhost:8000/api/market/quote` | Get quote |
 | **MCP** | `python -m mcp_server.main` | Claude MCP server (8 tools) |
