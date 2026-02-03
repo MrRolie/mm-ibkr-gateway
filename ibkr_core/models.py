@@ -255,8 +255,8 @@ class OrderSpec(BaseModel):
     @classmethod
     def validate_tif(cls, v: str) -> str:
         """Validate time-in-force."""
-        # MOC and OPG use tif internally but user doesn't need to set it
-        allowed = {"DAY", "GTC", "IOC", "FOK", "MOC", "OPG"}
+        # MOC uses orderType with DAY TIF; OPG uses OPG TIF
+        allowed = {"DAY", "GTC", "IOC", "FOK", "OPG"}
         if v not in allowed:
             raise ValueError(f"tif must be one of {allowed}, got {v}")
         return v

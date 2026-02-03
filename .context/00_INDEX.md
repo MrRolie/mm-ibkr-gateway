@@ -100,7 +100,7 @@ mm-ibkr-gateway/
 | **Contract** | IBKR's instrument representation | conId, symbol, securityType, exchange, currency, localSymbol, tradingClass | Immutable within session; cache invalidates on restart |
 | **Quote** | Market snapshot | bid, ask, last, bidSize, askSize, volume, timestamp (UTC), source | Timestamp is ISO 8601; bid ≤ last ≤ ask (or missing); source in [REALTIME, DELAYED, FROZEN] |
 | **Bar** | OHLCV historical candle | time, open, high, low, close, volume, barSize | close ≥ low; close ≤ high; time is ISO 8601 UTC |
-| **OrderSpec** | Request to place/preview an order | symbol, securityType, action (BUY/SELL/BUYTOCOVER/SELLSHORT), quantity, orderType, limit, stop, timeInForce | action ∈ [BUY, SELL, BUYTOCOVER, SELLSHORT]; quantity > 0; timeInForce ∈ [DAY, GTC, OPX] |
+| **OrderSpec** | Request to place/preview an order | symbol, securityType, action (BUY/SELL/BUYTOCOVER/SELLSHORT), quantity, orderType, limit, stop, timeInForce | action ∈ [BUY, SELL, BUYTOCOVER, SELLSHORT]; quantity > 0; timeInForce ∈ [DAY, GTC, IOC, FOK, OPG]; MOC orders use orderType=MOC with TIF=DAY |
 | **OrderResult** | Order placement response | orderId (UUID), status (SIMULATED/ACCEPTED/FILLED/REJECTED), fills, avgPrice, correlation_id | orderId deterministic (same input → same orderId); status depends on paper/live mode; every action logged to audit.db |
 | **AccountSummary** | Account state snapshot | netLiquidation, buyingPower, positions, cash, unrealizedPnL, realizedPnL | All money values are Decimal; unrealizedPnL = sum(position.unrealizedPnL) |
 | **Config** | Runtime configuration | trading_mode (paper/live), orders_enabled (bool), live_trading_override_file (path), ibkr_host, ibkr_port | Validated at startup AND runtime; trading_mode default=paper; orders_enabled default=false |
@@ -313,3 +313,4 @@ Any PR adding features, changing schemas, or modifying safety logic **MUST**:
 5. ✅ Code review checks both `.context/` AND code changes
 
 **If context is stale, PR is INCOMPLETE.**
+

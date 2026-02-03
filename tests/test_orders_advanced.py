@@ -501,8 +501,8 @@ class TestMOCOrderValidation:
         )
         ib_order = _build_ib_order(order_spec)
 
-        assert ib_order.orderType == "MKT"
-        assert ib_order.tif == "MOC"
+        assert ib_order.orderType == "MOC"
+        assert ib_order.tif == "DAY"
         assert ib_order.action == "BUY"
         assert ib_order.totalQuantity == 100
 

@@ -309,15 +309,22 @@ def validate_order_spec(order_spec: OrderSpec) -> List[str]:
                         "For SELL bracket: stop loss price must be greater than entry price"
                     )
 
-    # MOC/OPG orders - no special price requirements, but TIF is set automatically
-    if order_type in ("MOC", "OPG"):
-        # These use MKT order type with special TIF
-        pass
+    tif = order_spec.tif.upper()
 
-    # TIF validation (expanded for MOC/OPG)
-    valid_tif = {"DAY", "GTC", "IOC", "FOK", "MOC", "OPG"}
-    if order_spec.tif.upper() not in valid_tif:
-        errors.append(f"TIF must be one of {valid_tif}, got '{order_spec.tif}'")
+    # MOC/OPG orders - no special price requirements, but TIF is constrained
+    if order_type == "MOC":
+        # IBKR expects MOC as orderType with DAY TIF
+        if tif != "DAY":
+            errors.append("MOC orders require tif='DAY'")
+    elif order_type == "OPG":
+        # Opening auction orders should use OPG TIF (or default DAY)
+        if tif not in {"OPG", "DAY"}:
+            errors.append("OPG orders require tif='OPG' (or default DAY)")
+    else:
+        # TIF validation (standard orders)
+        valid_tif = {"DAY", "GTC", "IOC", "FOK"}
+        if tif not in valid_tif:
+            errors.append(f"TIF must be one of {valid_tif}, got '{order_spec.tif}'")
 
     return errors
 
@@ -438,9 +445,12 @@ def _build_ib_order(order_spec: OrderSpec) -> Order:
             order.trailStopPrice = order_spec.trailStopPrice
 
     elif order_type == "MOC":
-        # Market-on-close order
-        order = MarketOrder(action=action, totalQuantity=quantity)
-        order.tif = "MOC"
+        # Market-on-close order (IBKR expects orderType=MOC with DAY TIF)
+        order = Order()
+        order.action = action
+        order.totalQuantity = quantity
+        order.orderType = "MOC"
+        order.tif = "DAY"
         # Return early to skip setting tif below
         order.outsideRth = order_spec.outsideRth
         order.transmit = order_spec.transmit

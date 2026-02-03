@@ -675,6 +675,45 @@ class OrderSpec(BaseModel):
 
 ---
 
+### 14. MOC Orders Use orderType="MOC" with DAY TIF
+
+**[2026-02] | Map MOC orders to orderType=MOC and enforce DAY TIF | APPROVED**
+
+**Problem**: IBKR rejects orders that set `tif="MOC"` with error `Invalid time in force:MOC`.
+MOC is an order type, not a time-in-force. Our prior mapping used `MarketOrder` with `tif="MOC"`,
+which caused IBKR errors even though the order could later fill.
+
+**Solution**: Build MOC orders with `orderType="MOC"` and `tif="DAY"` regardless of user input,
+and validate MOC specs so `tif` must be `DAY`.
+
+**Code Example**:
+
+```python
+order = Order()
+order.orderType = "MOC"
+order.tif = "DAY"
+```
+
+**Alternatives**:
+
+- **Leave as MarketOrder + tif=MOC**: Rejected (IBKR rejects TIF=MOC).
+- **Ignore tif validation**: Rejected (allows invalid specs to slip through).
+
+**Trade-offs**:
+
+- **Pro**: Matches IBKR semantics; no TIF errors.
+- **Pro**: MOC orders execute at close as intended.
+- **Con**: Stricter validation may reject previously accepted (but invalid) requests.
+
+**Enforcement**:
+
+- `validate_order_spec` enforces `tif="DAY"` for `orderType="MOC"`.
+- `_build_ib_order` sets `orderType="MOC"` and `tif="DAY"`.
+
+**Related**: `ibkr_core/orders.py`, `ibkr_core/models.py`
+
+---
+
 ## External Systems Integration
 
 | System | Purpose | Protocol | Failure Impact | Recovery |
@@ -737,6 +776,7 @@ Use this for future decisions:
 | ib-insync SDK | ✅ Approved | Low | High (stability) |
 | SQLite audit | ✅ Approved | Low | High (compliance) |
 | Pydantic validation | ✅ Approved | Low | Medium (quality) |
+| MOC orderType + DAY TIF | ✅ Approved | Low | Medium (correctness) |
 
 ---
 
@@ -750,3 +790,4 @@ When you make a non-obvious architectural choice:
 4. **Get PR review approval** before merging
 
 This keeps context current and prevents loss of institutional knowledge.
+
