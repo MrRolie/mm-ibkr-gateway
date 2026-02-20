@@ -109,8 +109,6 @@ balance = 10250.50  # Float! Precision loss at scale.
 - Test: Each gate independently, then all together
 - Code review: No "shortcuts" or "testing modes"
 
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #2; [04_RISK_GUARDRAILS.md](.context/04_RISK_GUARDRAILS.md)
-
 ---
 
 ### 3. Immutable Audit Trail (Append-Only, No Deletes)
@@ -159,8 +157,6 @@ ON orders (orderId, action, timestamp);
 - Tests: Verify UNIQUE constraint on inserts
 - Operations: Archive audit.db monthly to archive/ folder
 
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #6
-
 ---
 
 ### 4. Deterministic Order IDs (Hash-Based, Not Random)
@@ -208,8 +204,6 @@ def place_order(symbol, action, qty, orderType, limit=None):
 - Tests: Verify `place_order(A) == place_order(A)` (same result)
 - Tests: Verify retry returns cached result
 - Code review: Hash function is stable
-
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #5
 
 ---
 
@@ -268,8 +262,6 @@ contract_cache = {}  # Cache invalidated
 - Tests: Mock IBKR API; verify cache behavior
 - Ops: Restart service if contract issue suspected
 
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #7
-
 ---
 
 ### 6. UTC Timestamps (ISO 8601) for All Time
@@ -316,8 +308,6 @@ ts = "2025-01-30 14:35"  # No timezone!
 - Type: String timestamps are ISO 8601
 - Tests: Assert `"+00:00"` in timestamp string
 - Code review: No `datetime.now()` (use `datetime.now(pytz.UTC)`)
-
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #4
 
 ---
 
@@ -374,8 +364,6 @@ async def get_quote_bad(symbol):
 - Code review: No blocking calls in async functions
 - Tests: Verify executor thread is used
 - Operations: Monitor thread pool for stalls
-
-**Related**: [02_ARCHITECTURE.md](.context/02_ARCHITECTURE.md); [07_STYLE_AND_PATTERNS.md](.context/07_STYLE_AND_PATTERNS.md)
 
 ---
 
@@ -434,8 +422,6 @@ async def place_order_endpoint(req: OrderRequest, request: Request):
 - Logging: Always include in structured logs
 - Audit: Always store with order records
 
-**Related**: [07_STYLE_AND_PATTERNS.md](.context/07_STYLE_AND_PATTERNS.md)
-
 ---
 
 ### 9. Three Interfaces (Python API, REST API, MCP)
@@ -482,8 +468,6 @@ API      API      Server    Use
 - Tests: Test each interface independently
 - Code review: Changes to ibkr_core might affect 3 interfaces
 
-**Related**: [02_ARCHITECTURE.md](.context/02_ARCHITECTURE.md)
-
 ---
 
 ### 10. Paper Mode by Default (Not Live)
@@ -512,8 +496,6 @@ ORDERS_ENABLED = os.getenv("ORDERS_ENABLED", "false")  # Default: false
 - **Pro**: Safe by default
 - **Pro**: Developers can't accidentally trade live
 - **Con**: Production deployment requires config (not hard)
-
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #1; [04_RISK_GUARDRAILS.md](.context/04_RISK_GUARDRAILS.md)
 
 ---
 
@@ -562,8 +544,6 @@ orderId = ib.placeOrder(contract, order)
 - Pin version: `ib-insync>=0.9.17,<1.0`
 - Test all IBKR operations with mock
 - Monitor GitHub issues for breaking changes
-
-**Related**: [08_DEPENDENCIES.md](08_DEPENDENCIES.md)
 
 ---
 
@@ -618,8 +598,6 @@ CREATE TABLE orders (
 - Never UPDATE or DELETE orders (append-only)
 - Archive audit.db monthly to archive/ folder
 
-**Related**: [01_RULES.md](.context/01_RULES.md) Rule #6
-
 ---
 
 ### 13. Pydantic for Request/Response Validation (Not Manual)
@@ -671,8 +649,6 @@ class OrderSpec(BaseModel):
 - Use `Field()` for validation rules
 - Tests verify serialization round-trip
 
-**Related**: [03_DATA_CONTRACTS.md](03_DATA_CONTRACTS.md)
-
 ---
 
 ### 14. MOC Orders Use orderType="MOC" with DAY TIF
@@ -709,8 +685,6 @@ order.tif = "DAY"
 
 - `validate_order_spec` enforces `tif="DAY"` for `orderType="MOC"`.
 - `_build_ib_order` sets `orderType="MOC"` and `tif="DAY"`.
-
-**Related**: `ibkr_core/orders.py`, `ibkr_core/models.py`
 
 ---
 
@@ -790,4 +764,3 @@ When you make a non-obvious architectural choice:
 4. **Get PR review approval** before merging
 
 This keeps context current and prevents loss of institutional knowledge.
-

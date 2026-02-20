@@ -110,16 +110,18 @@ def get_account_summary(
 
     logger.info(f"Requesting account summary for {account_id}")
 
+    previous_timeout = getattr(client.ib, "RequestTimeout", None)
+    if previous_timeout is not None:
+        try:
+            client.ib.RequestTimeout = max(1.0, min(float(previous_timeout), float(timeout_s)))
+        except Exception:
+            previous_timeout = None
+
     try:
-        # Request account summary from IBKR
-        # reqAccountSummary returns a list of AccountValue objects
-        client.ib.reqAccountSummary()
-
-        # Allow time for data to arrive
-        client.ib.sleep(min(timeout_s, 2.0))
-
-        # Get the account summary values
-        summary_values = client.ib.accountSummary()
+        # accountSummary() loads and caches subscription data on first call.
+        # Repeated reqAccountSummary() calls can leak subscriptions and trigger
+        # IBKR error 322 (max account summary requests exceeded).
+        summary_values = client.ib.accountSummary(account_id)
 
         if not summary_values:
             raise AccountSummaryError(f"No account summary data received for account {account_id}")
@@ -170,14 +172,18 @@ def get_account_summary(
 
     except AccountSummaryError:
         raise
+    except TimeoutError as e:
+        raise AccountSummaryError(
+            f"Account summary request timed out for {account_id} after {timeout_s:.1f}s"
+        ) from e
     except Exception as e:
         raise AccountSummaryError(f"Failed to get account summary for {account_id}: {e}") from e
     finally:
-        # Cancel the account summary subscription
-        try:
-            client.ib.cancelAccountSummary()
-        except Exception:
-            pass
+        if previous_timeout is not None:
+            try:
+                client.ib.RequestTimeout = previous_timeout
+            except Exception:
+                pass
 
 
 # =============================================================================
