@@ -12,6 +12,11 @@ secrets/
 # IBKR configuration (contains credentials)
 jts.ini
 
+# Linux deployment user settings
+deploy/linux/config/tws_settings/
+deploy/linux/data/
+deploy/linux/.env
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

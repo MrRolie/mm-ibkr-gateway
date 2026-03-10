@@ -31,6 +31,12 @@ RUN pip install --no-cache-dir \
     python-dotenv \
     aiohttp \
     loguru \
+    nest-asyncio \
+    python-json-logger \
+    typer \
+    rich \
+    anyio \
+    tzdata \
     && pip install --no-cache-dir pytest pytest-asyncio httpx || true
 
 # Development stage

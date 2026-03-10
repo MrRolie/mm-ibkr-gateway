@@ -99,6 +99,26 @@ docker-compose -f docker-compose.demo.yml up
 
 **Note**: The Docker container connects to IBKR Gateway running on your host machine via `host.docker.internal`.
 
+### Production Deployment
+
+For a production deployment with IB Gateway managed by Docker (using IBC for auto-login and 2FA handling):
+
+```bash
+# See deploy/linux/README.md for full setup
+cd deploy/linux
+cp .env.example .env
+# Edit .env with your credentials
+./scripts/start.sh
+```
+
+Features:
+- IBC auto-login with 2FA retry
+- Daily auto-restart without re-authentication
+- VNC access for debugging
+- Both IB Gateway and API in Docker
+
+See [deploy/linux/README.md](deploy/linux/README.md) for details.
+
 ### Troubleshooting
 
 | Issue | Solution |

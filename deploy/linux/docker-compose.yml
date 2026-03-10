@@ -1,0 +1,62 @@
+name: mm-ibkr-stack
+
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    container_name: mm-ibkr-gateway
+    restart: always
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-live}
+      TWS_SETTINGS_PATH: /home/ibgateway/tws_settings
+      TWOFA_TIMEOUT_ACTION: restart
+      RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
+      TWOFA_EXIT_INTERVAL: 60
+      AUTO_RESTART_TIME: "11:45 PM"
+      EXISTING_SESSION_DETECTED_ACTION: primary
+      TWS_ACCEPT_INCOMING: accept
+      VNC_SERVER_PASSWORD: ${VNC_PASSWORD}
+      TIME_ZONE: ${TIME_ZONE:-America/New_York}
+      TZ: ${TIME_ZONE:-America/New_York}
+    volumes:
+      - ./config/tws_settings:/home/ibgateway/tws_settings
+    ports:
+      - "127.0.0.1:4001:4003"
+      - "127.0.0.1:4002:4004"
+      - "127.0.0.1:5900:5900"
+    networks:
+      - ibkr-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/4003'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+  api:
+    build:
+      context: ../..
+      target: production
+    container_name: mm-ibkr-api
+    restart: always
+    depends_on:
+      ib-gateway:
+        condition: service_healthy
+    environment:
+      - MM_IBKR_CONFIG_PATH=/app/config/config.json
+      - TRADING_MODE=${TRADING_MODE:-live}
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - ibkr-network
+    volumes:
+      - ./config/config.json:/app/config/config.json:ro
+      - ./data:/app/data
+
+networks:
+  ibkr-network:
+    driver: bridge
+
+volumes:
+  ibkr-data:
