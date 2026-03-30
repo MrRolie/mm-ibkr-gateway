@@ -19,6 +19,7 @@ from typing import Callable, Dict, Generator, List, Optional
 
 from ib_insync import Contract, Option, Ticker
 
+from ibkr_core.broker import get_broker_adapter
 from ibkr_core.client import IBKRClient
 from ibkr_core.contracts import (
     ContractResolutionError,
@@ -405,6 +406,7 @@ def get_quote(
 
     # Ensure connected
     client.ensure_connected()
+    broker = get_broker_adapter(client)
 
     logger.debug(f"Requesting quote for {spec.symbol} ({spec.securityType})")
 
@@ -425,19 +427,19 @@ def get_quote(
         errors.append((errorCode, errorString))
 
     # Register error handler
-    client.ib.errorEvent += on_error
+    broker.add_error_handler(on_error)
 
     try:
         # Request snapshot market data
         # Note: snapshot=True requests delayed/snapshot data without streaming subscription
-        ticker = client.ib.reqMktData(contract, "", snapshot=True)
+        ticker = broker.request_market_data(contract, "", snapshot=True)
 
         deadline = time.time() + timeout_s
 
         # Poll until data arrives or timeout
         while time.time() < deadline:
             # Allow ib_insync to process events
-            client.ib.sleep(POLL_INTERVAL_S)
+            broker.sleep(POLL_INTERVAL_S)
 
             # Check for errors
             for error_code, error_msg in errors:
@@ -490,9 +492,9 @@ def get_quote(
         )
     finally:
         # Unregister error handler
-        client.ib.errorEvent -= on_error
+        broker.remove_error_handler(on_error)
         # Cancel market data subscription
-        client.ib.cancelMktData(contract)
+        broker.cancel_market_data(contract)
 
 
 def get_quotes(
@@ -525,6 +527,7 @@ def get_quotes(
 
     # Ensure connected
     client.ensure_connected()
+    broker = get_broker_adapter(client)
 
     logger.info(f"Requesting quotes for {len(specs)} instruments")
 
@@ -550,14 +553,14 @@ def get_quotes(
                 errors_by_symbol[symbol].append((errorCode, errorString))
 
     # Register error handler
-    client.ib.errorEvent += on_error
+    broker.add_error_handler(on_error)
 
     try:
         # Request market data for all contracts
         tickers: Dict[str, Ticker] = {}
         for spec in specs:
             contract = contracts[spec.symbol]
-            ticker = client.ib.reqMktData(contract, "", snapshot=True)
+            ticker = broker.request_market_data(contract, "", snapshot=True)
             tickers[spec.symbol] = ticker
 
         deadline = time.time() + timeout_s
@@ -566,7 +569,7 @@ def get_quotes(
 
         # Poll until all have data or timeout
         while pending and time.time() < deadline:
-            client.ib.sleep(POLL_INTERVAL_S)
+            broker.sleep(POLL_INTERVAL_S)
 
             # Check which tickers now have data
             for symbol in list(pending):
@@ -630,11 +633,11 @@ def get_quotes(
 
     finally:
         # Unregister error handler
-        client.ib.errorEvent -= on_error
+        broker.remove_error_handler(on_error)
         # Cancel all market data subscriptions
         for spec in specs:
             contract = contracts[spec.symbol]
-            client.ib.cancelMktData(contract)
+            broker.cancel_market_data(contract)
 
 
 # =============================================================================
@@ -1026,6 +1029,7 @@ def get_historical_bars(
 
     # Ensure connected
     client.ensure_connected()
+    broker = get_broker_adapter(client)
 
     logger.info(
         f"Requesting historical bars for {spec.symbol}: "
@@ -1051,19 +1055,19 @@ def get_historical_bars(
         errors.append(f"[{errorCode}] {errorString}")
 
     # Register error handler temporarily
-    client.ib.errorEvent += on_error
+    broker.add_error_handler(on_error)
 
     try:
         # Request historical data
         # endDateTime="" means "now"
-        bars = client.ib.reqHistoricalData(
+        bars = broker.request_historical_data(
             contract,
-            endDateTime="",
-            durationStr=norm_duration,
-            barSizeSetting=norm_bar_size,
-            whatToShow=norm_what_to_show,
-            useRTH=rth_only,
-            formatDate=1,  # Use human-readable dates
+            end_date_time="",
+            duration_str=norm_duration,
+            bar_size_setting=norm_bar_size,
+            what_to_show=norm_what_to_show,
+            use_rth=rth_only,
+            format_date=1,  # Use human-readable dates
             timeout=timeout_s,
         )
 
@@ -1136,7 +1140,7 @@ def get_historical_bars(
 
     finally:
         # Unregister error handler
-        client.ib.errorEvent -= on_error
+        broker.remove_error_handler(on_error)
 
 
 def _clean_optional_float(value) -> Optional[float]:
@@ -1222,6 +1226,7 @@ def get_option_chain(
         raise ValueError("max_candidates must be positive")
 
     client.ensure_connected()
+    broker = get_broker_adapter(client)
 
     underlying_contract = resolve_contract(underlying_spec, client)
 
@@ -1242,11 +1247,11 @@ def get_option_chain(
     if underlying_contract.secType == "FUT":
         sec_def_exchange = option_exchange or underlying_contract.exchange or ""
 
-    option_chains = client.ib.reqSecDefOptParams(
-        underlying_contract.symbol,
-        sec_def_exchange,
-        underlying_contract.secType,
-        underlying_contract.conId,
+    option_chains = broker.request_option_chain_params(
+        underlying_symbol=underlying_contract.symbol,
+        fut_fop_exchange=sec_def_exchange,
+        underlying_sec_type=underlying_contract.secType,
+        underlying_con_id=underlying_contract.conId,
     )
     if not option_chains:
         raise NoMarketDataError(f"No option chain returned for {underlying_spec.symbol}")
@@ -1317,7 +1322,7 @@ def get_option_chain(
         if len(candidate_contracts) >= max_candidates:
             break
 
-    qualified_contracts = client.ib.qualifyContracts(*candidate_contracts) if candidate_contracts else []
+    qualified_contracts = broker.qualify_contracts(*candidate_contracts) if candidate_contracts else []
     candidates = [
         OptionContractCandidate(
             symbol=contract.symbol,
@@ -1363,6 +1368,7 @@ def get_option_snapshot(
         raise ValueError("Fully specified option contracts require expiry, strike, and right")
 
     client.ensure_connected()
+    broker = get_broker_adapter(client)
 
     contract = resolve_contract(option_spec, client)
     quote = get_quote(option_spec, client, timeout_s=timeout_s)
@@ -1372,12 +1378,12 @@ def get_option_snapshot(
     def on_error(reqId: int, errorCode: int, errorString: str, contract):
         errors.append((errorCode, errorString))
 
-    client.ib.errorEvent += on_error
+    broker.add_error_handler(on_error)
     try:
-        ticker = client.ib.reqMktData(contract, "100,101,104,106", snapshot=True)
+        ticker = broker.request_market_data(contract, "100,101,104,106", snapshot=True)
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            client.ib.sleep(POLL_INTERVAL_S)
+            broker.sleep(POLL_INTERVAL_S)
             if (
                 _build_option_greeks(getattr(ticker, "modelGreeks", None))
                 or _clean_optional_float(getattr(ticker, "impliedVolatility", None)) is not None
@@ -1414,5 +1420,5 @@ def get_option_snapshot(
             greeks=greek_sets,
         )
     finally:
-        client.ib.errorEvent -= on_error
-        client.ib.cancelMktData(contract)
+        broker.remove_error_handler(on_error)
+        broker.cancel_market_data(contract)

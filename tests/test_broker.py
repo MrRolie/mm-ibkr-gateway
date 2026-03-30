@@ -36,3 +36,38 @@ def test_ib_insync_broker_adapter_request_timeout_round_trip() -> None:
     adapter.set_request_timeout(3.0)
 
     assert ib.RequestTimeout == 3.0
+
+
+def test_ib_insync_broker_adapter_market_data_and_order_methods_proxy() -> None:
+    ib = MagicMock()
+    adapter = IBInsyncBrokerAdapter(ib)
+    handler = MagicMock()
+
+    adapter.add_error_handler(handler)
+    adapter.remove_error_handler(handler)
+    adapter.request_market_data("contract", "100", snapshot=True)
+    adapter.cancel_market_data("contract")
+    adapter.request_historical_data(
+        "contract",
+        end_date_time="",
+        duration_str="5 D",
+        bar_size_setting="1 day",
+        what_to_show="TRADES",
+        use_rth=True,
+        format_date=1,
+        timeout=5.0,
+    )
+    adapter.request_option_chain_params("AAPL", "", "STK", 123)
+    adapter.place_order("contract", "order")
+    adapter.cancel_order("order")
+    adapter.open_trades()
+    adapter.trades()
+
+    ib.reqMktData.assert_called_once_with("contract", "100", snapshot=True)
+    ib.cancelMktData.assert_called_once_with("contract")
+    ib.reqHistoricalData.assert_called_once()
+    ib.reqSecDefOptParams.assert_called_once_with("AAPL", "", "STK", 123)
+    ib.placeOrder.assert_called_once_with("contract", "order")
+    ib.cancelOrder.assert_called_once_with("order")
+    ib.openTrades.assert_called_once_with()
+    ib.trades.assert_called_once_with()

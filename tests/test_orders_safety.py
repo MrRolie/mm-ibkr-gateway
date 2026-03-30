@@ -21,7 +21,10 @@ from ibkr_core.models import OrderSpec, Quote, SymbolSpec
 from ibkr_core.orders import (
     OrderRegistry,
     OrderResult,
+    cancel_order,
     get_order_registry,
+    get_open_orders,
+    get_order_status,
     place_order,
     preview_order,
 )
@@ -166,6 +169,36 @@ def mock_contract():
     return contract
 
 
+def build_mock_trade(
+    contract,
+    *,
+    perm_id: int = 123456789,
+    order_id: int = 1,
+    side: str = "BUY",
+    quantity: float = 1,
+    order_type: str = "LMT",
+    status: str = "Submitted",
+    order_ref: str | None = None,
+):
+    """Create a mock IB trade with the shape expected by order helpers."""
+    trade = MagicMock()
+    trade.order.permId = perm_id
+    trade.order.orderId = order_id
+    trade.order.clientId = 1
+    trade.order.orderRef = order_ref
+    trade.order.action = side
+    trade.order.totalQuantity = quantity
+    trade.order.orderType = order_type
+    trade.contract = contract
+    trade.orderStatus = MagicMock()
+    trade.orderStatus.status = status
+    trade.orderStatus.filled = 0
+    trade.orderStatus.remaining = quantity
+    trade.orderStatus.avgFillPrice = 0
+    trade.log = []
+    return trade
+
+
 # =============================================================================
 # Safety Tests - ORDERS_ENABLED=false
 # =============================================================================
@@ -291,20 +324,7 @@ class TestOrdersEnabled:
         set_control_state(trading_mode="paper", orders_enabled=True)
 
         # Create a mock trade
-        mock_trade = MagicMock()
-        mock_trade.order.permId = 123456789
-        mock_trade.order.orderId = 1
-        mock_trade.order.clientId = 1
-        mock_trade.order.action = "BUY"
-        mock_trade.order.totalQuantity = 1
-        mock_trade.order.orderType = "LMT"
-        mock_trade.contract = mock_contract
-        mock_trade.orderStatus = MagicMock()
-        mock_trade.orderStatus.status = "Submitted"
-        mock_trade.orderStatus.filled = 0
-        mock_trade.orderStatus.remaining = 1
-        mock_trade.orderStatus.avgFillPrice = 0
-        mock_trade.log = []
+        mock_trade = build_mock_trade(mock_contract)
 
         mock_client.ib.placeOrder.return_value = mock_trade
 
@@ -326,20 +346,7 @@ class TestOrdersEnabled:
         set_control_state(trading_mode="paper", orders_enabled=True)
 
         # Create a mock trade
-        mock_trade = MagicMock()
-        mock_trade.order.permId = 123456789
-        mock_trade.order.orderId = 1
-        mock_trade.order.clientId = 1
-        mock_trade.order.action = "BUY"
-        mock_trade.order.totalQuantity = 1
-        mock_trade.order.orderType = "LMT"
-        mock_trade.contract = mock_contract
-        mock_trade.orderStatus = MagicMock()
-        mock_trade.orderStatus.status = "Submitted"
-        mock_trade.orderStatus.filled = 0
-        mock_trade.orderStatus.remaining = 1
-        mock_trade.orderStatus.avgFillPrice = 0
-        mock_trade.log = []
+        mock_trade = build_mock_trade(mock_contract)
 
         mock_client.ib.placeOrder.return_value = mock_trade
 
@@ -351,6 +358,95 @@ class TestOrdersEnabled:
         assert result.orderId is not None
         assert result.orderStatus is not None
         assert result.errors == []
+
+    def test_place_order_returns_existing_trade_for_client_order_id_retry(
+        self, mock_client, valid_order_spec, mock_contract
+    ):
+        """Idempotent retries should return the existing trade before placing a new order."""
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        retry_spec = valid_order_spec.model_copy(update={"clientOrderId": "retry-123"})
+        existing_trade = build_mock_trade(mock_contract, order_ref="retry-123")
+        mock_client.ib.openTrades.return_value = [existing_trade]
+        mock_client.ib.trades.return_value = []
+
+        result = place_order(mock_client, retry_spec)
+
+        mock_client.ib.placeOrder.assert_not_called()
+        assert result.status == "ACCEPTED"
+        assert result.orderId == "123456789"
+        assert result.clientOrderId == "retry-123"
+
+
+class TestBrokerFallbackOrderLookup:
+    """Test cancel/status/open-orders behavior when registry lookup misses."""
+
+    def test_cancel_order_uses_broker_lookup(self, mock_client, mock_contract):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(mock_contract, status="Submitted")
+        mock_client.ib.openTrades.return_value = [trade]
+        mock_client.ib.trades.return_value = []
+
+        def _cancel(order):
+            assert order is trade.order
+            trade.orderStatus.status = "Cancelled"
+
+        mock_client.ib.cancelOrder.side_effect = _cancel
+
+        with patch("ibkr_core.orders.update_order_status"):
+            with patch("ibkr_core.orders.record_audit_event"):
+                result = cancel_order(mock_client, "123456789")
+
+        assert result.status == "CANCELLED"
+        mock_client.ib.cancelOrder.assert_called_once_with(trade.order)
+
+    def test_get_order_status_uses_broker_lookup(self, mock_client, mock_contract):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(mock_contract, status="Submitted")
+        mock_client.ib.openTrades.return_value = [trade]
+        mock_client.ib.trades.return_value = []
+
+        status = get_order_status(mock_client, "123456789")
+
+        assert status.orderId == "123456789"
+        assert status.status == "SUBMITTED"
+
+    def test_get_open_orders_preserves_payload_contract(self, mock_client, mock_contract):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(
+            mock_contract,
+            side="SELL",
+            quantity=3,
+            order_type="MKT",
+            status="PreSubmitted",
+            order_ref="open-123",
+        )
+        trade.orderStatus.filled = 1
+        trade.orderStatus.remaining = 2
+        mock_client.ib.openTrades.return_value = [trade]
+
+        open_orders = get_open_orders(mock_client)
+
+        assert open_orders == [
+            {
+                "order_id": "123456789",
+                "client_order_id": "open-123",
+                "symbol": "AAPL",
+                "side": "SELL",
+                "quantity": 3,
+                "order_type": "MKT",
+                "status": "PreSubmitted",
+                "filled": 1,
+                "remaining": 2,
+            }
+        ]
 
 
 # =============================================================================
