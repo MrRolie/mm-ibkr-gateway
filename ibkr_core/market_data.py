@@ -733,6 +733,9 @@ class StreamingQuote:
         """Symbol being streamed."""
         return self._spec.symbol
 
+    def _broker(self):
+        return get_broker_adapter(self._client)
+
     def start(self) -> None:
         """
         Start streaming quotes.
@@ -760,20 +763,21 @@ class StreamingQuote:
 
         # Error handler
         self._errors = []
+        broker = self._broker()
 
         def on_error(reqId: int, errorCode: int, errorString: str, contract):
             self._errors.append((errorCode, errorString))
 
         self._on_error_handler = on_error
-        self._client.ib.errorEvent += on_error
+        broker.add_error_handler(on_error)
 
         # Request streaming market data (snapshot=False for streaming)
-        self._ticker = self._client.ib.reqMktData(self._contract, "", snapshot=False)
+        self._ticker = broker.request_market_data(self._contract, "", snapshot=False)
 
         # Wait for initial data
         deadline = time.time() + self._timeout_s
         while time.time() < deadline:
-            self._client.ib.sleep(POLL_INTERVAL_S)
+            broker.sleep(POLL_INTERVAL_S)
 
             # Check for errors
             for error_code, error_msg in self._errors:
@@ -805,16 +809,18 @@ class StreamingQuote:
 
     def stop(self) -> None:
         """Stop streaming quotes and clean up."""
+        broker = self._broker()
+
         if self._on_error_handler:
             try:
-                self._client.ib.errorEvent -= self._on_error_handler
+                broker.remove_error_handler(self._on_error_handler)
             except Exception:
                 pass
             self._on_error_handler = None
 
         if self._contract and self._client.is_connected:
             try:
-                self._client.ib.cancelMktData(self._contract)
+                broker.cancel_market_data(self._contract)
             except Exception as e:
                 logger.warning(f"Error canceling market data: {e}")
 
@@ -838,7 +844,7 @@ class StreamingQuote:
             )
 
         # Process any pending events
-        self._client.ib.sleep(0)
+        self._broker().sleep(0)
 
         return _ticker_to_quote(
             self._ticker,
@@ -877,6 +883,7 @@ class StreamingQuote:
         count = 0
         start_time = time.time()
         last_quote: Optional[Quote] = None
+        broker = self._broker()
 
         while True:
             # Check limits
@@ -886,7 +893,7 @@ class StreamingQuote:
                 break
 
             # Process events
-            self._client.ib.sleep(poll_interval_s)
+            broker.sleep(poll_interval_s)
 
             # Check for new errors
             for error_code, error_msg in self._errors:

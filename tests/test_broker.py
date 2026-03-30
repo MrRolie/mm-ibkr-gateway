@@ -62,6 +62,7 @@ def test_ib_insync_broker_adapter_market_data_and_order_methods_proxy() -> None:
     adapter.cancel_order("order")
     adapter.open_trades()
     adapter.trades()
+    adapter.sleep(0.25)
 
     ib.reqMktData.assert_called_once_with("contract", "100", snapshot=True)
     ib.cancelMktData.assert_called_once_with("contract")
@@ -71,3 +72,4 @@ def test_ib_insync_broker_adapter_market_data_and_order_methods_proxy() -> None:
     ib.cancelOrder.assert_called_once_with("order")
     ib.openTrades.assert_called_once_with()
     ib.trades.assert_called_once_with()
+    ib.sleep.assert_called_once_with(0.25)

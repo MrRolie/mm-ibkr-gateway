@@ -115,6 +115,17 @@ def mock_client():
 
 
 @pytest.fixture
+def mock_broker_client():
+    """Create a mock IBKRClient with an explicit broker adapter."""
+    client = MagicMock()
+    client.is_connected = True
+    client.ensure_connected = MagicMock()
+    client.broker = MagicMock()
+    type(client).managed_accounts = PropertyMock(return_value=["DU123456"])
+    return client
+
+
+@pytest.fixture
 def valid_symbol_spec():
     """Create a valid SymbolSpec."""
     return SymbolSpec(
@@ -378,6 +389,25 @@ class TestOrdersEnabled:
         assert result.orderId == "123456789"
         assert result.clientOrderId == "retry-123"
 
+    def test_place_order_uses_explicit_broker_for_submission(
+        self, mock_broker_client, valid_order_spec, mock_quote, mock_contract
+    ):
+        """Test order placement through an explicit broker adapter."""
+        set_control_state(trading_mode="paper", orders_enabled=True)
+
+        trade = build_mock_trade(mock_contract)
+        mock_broker_client.broker.place_order.return_value = trade
+        mock_broker_client.broker.open_trades.return_value = []
+        mock_broker_client.broker.trades.return_value = []
+
+        with patch("ibkr_core.orders.resolve_contract", return_value=mock_contract):
+            with patch("ibkr_core.orders.get_quote", return_value=mock_quote):
+                result = place_order(mock_broker_client, valid_order_spec)
+
+        mock_broker_client.broker.place_order.assert_called_once()
+        assert result.status == "ACCEPTED"
+        assert result.orderId is not None
+
 
 class TestBrokerFallbackOrderLookup:
     """Test cancel/status/open-orders behavior when registry lookup misses."""
@@ -433,6 +463,76 @@ class TestBrokerFallbackOrderLookup:
         mock_client.ib.openTrades.return_value = [trade]
 
         open_orders = get_open_orders(mock_client)
+
+        assert open_orders == [
+            {
+                "order_id": "123456789",
+                "client_order_id": "open-123",
+                "symbol": "AAPL",
+                "side": "SELL",
+                "quantity": 3,
+                "order_type": "MKT",
+                "status": "PreSubmitted",
+                "filled": 1,
+                "remaining": 2,
+            }
+        ]
+
+    def test_cancel_order_uses_explicit_broker_lookup(self, mock_broker_client, mock_contract):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(mock_contract, status="Submitted")
+        mock_broker_client.broker.open_trades.return_value = [trade]
+        mock_broker_client.broker.trades.return_value = []
+
+        def _cancel(order):
+            assert order is trade.order
+            trade.orderStatus.status = "Cancelled"
+
+        mock_broker_client.broker.cancel_order.side_effect = _cancel
+
+        with patch("ibkr_core.orders.update_order_status"):
+            with patch("ibkr_core.orders.record_audit_event"):
+                result = cancel_order(mock_broker_client, "123456789")
+
+        assert result.status == "CANCELLED"
+        mock_broker_client.broker.cancel_order.assert_called_once_with(trade.order)
+
+    def test_get_order_status_uses_explicit_broker_lookup(
+        self, mock_broker_client, mock_contract
+    ):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(mock_contract, status="Submitted")
+        mock_broker_client.broker.open_trades.return_value = [trade]
+        mock_broker_client.broker.trades.return_value = []
+
+        status = get_order_status(mock_broker_client, "123456789")
+
+        assert status.orderId == "123456789"
+        assert status.status == "SUBMITTED"
+
+    def test_get_open_orders_preserves_payload_contract_with_explicit_broker(
+        self, mock_broker_client, mock_contract
+    ):
+        set_control_state(trading_mode="paper", orders_enabled=True)
+        get_order_registry().clear()
+
+        trade = build_mock_trade(
+            mock_contract,
+            side="SELL",
+            quantity=3,
+            order_type="MKT",
+            status="PreSubmitted",
+            order_ref="open-123",
+        )
+        trade.orderStatus.filled = 1
+        trade.orderStatus.remaining = 2
+        mock_broker_client.broker.open_trades.return_value = [trade]
+
+        open_orders = get_open_orders(mock_broker_client)
 
         assert open_orders == [
             {
