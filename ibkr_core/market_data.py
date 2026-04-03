@@ -1368,6 +1368,12 @@ def get_option_snapshot(
     Get a single-leg option snapshot including quote and greeks when available.
 
     The quote is required; greeks and volatility fields are returned opportunistically.
+
+    IMPORTANT: This function uses STREAMING mode (snapshot=False) for the greeks/IV
+    request because IBKR API does not support generic ticks with snapshot=True.
+    This requires "US Equity & Options Add-On Streaming" subscription.
+
+    Market data is requested, polled for the specified timeout, then cancelled.
     """
     if option_spec.securityType != "OPT":
         raise ValueError("option_spec.securityType must be 'OPT'")
@@ -1387,7 +1393,10 @@ def get_option_snapshot(
 
     broker.add_error_handler(on_error)
     try:
-        ticker = broker.request_market_data(contract, "100,101,104,106", snapshot=True)
+        # CRITICAL: Use snapshot=False for generic ticks (greeks/IV).
+        # IBKR API does not support generic ticks with snapshot=True.
+        # This requires "US Equity & Options Add-On Streaming" subscription.
+        ticker = broker.request_market_data(contract, "100,101,104,106", snapshot=False)
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             broker.sleep(POLL_INTERVAL_S)
