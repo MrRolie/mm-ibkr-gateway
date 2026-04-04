@@ -1,9 +1,7 @@
 # Additional files to ignore
-.claude/
 .vscode/
 .benchmarks/
 data/
-AGENTS.md
 
 # Secrets and credentials
 secrets/
@@ -235,3 +233,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent Skills
+*.skill
+
